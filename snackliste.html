@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Snackliste</title>
+  <style>
+    :root { --bg:#000; --text:#fff; --card:#fff; --muted:#888; }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; background:var(--bg); color:var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      min-height:100vh; display:flex; flex-direction:column;
+    }
+
+    /* Header */
+    .header{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; gap:12px;
+    }
+    .header img{ height:80px; width:auto; object-fit:contain; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
+
+    /* Inhalt */
+    .wrap{
+      flex:1; display:flex; flex-direction:column; align-items:center;
+      gap:16px; padding:16px;
+    }
+    .toolbar{
+      width:95%; max-width:960px; display:flex; justify-content:space-between; align-items:center;
+      gap:12px; margin-top:6px;
+    }
+    .toolbar .info { color:var(--muted); }
+
+    /* Termin hinzufügen */
+    .add-box{
+      width:95%; max-width:960px; background:var(--card); color:#111;
+      border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,.35);
+      padding:12px; display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+    }
+    .add-box label{ font-weight:bold; }
+    .add-box input[type="date"]{
+      padding:10px; border:1px solid #ddd; border-radius:10px;
+    }
+    .btn {
+      background:#000; color:#fff; border:none; border-radius:12px;
+      padding:10px 14px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    .btn.secondary { background:#666; }
+    .btn[disabled]{ opacity:.6; cursor:default; }
+
+    .msg{
+      width:95%; max-width:960px; min-height:40px; background:#fff; color:#111;
+      border-radius:8px; display:flex; align-items:center; padding:8px 10px;
+    }
+    .msg.ok{ background:#e7ffe7; }
+
+    .list{
+      width:95%; max-width:960px; display:grid; gap:12px;
+      grid-template-columns: 1fr;
+    }
+    .card{
+      background:var(--card); color:#111; border-radius:12px;
+      box-shadow:0 4px 16px rgba(0,0,0,.35); padding:14px;
+      display:grid; grid-template-columns: 1.2fr 1fr auto; gap:12px; align-items:center;
+    }
+    .date { font-weight:bold; }
+    .assignee { color:#333; }
+    .free { color:#0a7f00; font-weight:bold; }
+    .note-input { width:100%; border:1px solid #ddd; border-radius:8px; padding:8px; }
+
+    /* Home-Button */
+    .home-btn{
+      position:fixed; left:18px; bottom:18px; border:none;
+      background:#fff; color:#000; border-radius:50%;
+      padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    .home-btn img{ width:32px; height:32px; display:block; }
+
+    @media (max-width:720px){
+      .card{ grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <img src="pluslogo.png" alt="Logo links">
+    <img src="faust.jpg" alt="Logo Mitte">
+    <img src="melsungen.jpg" alt="Logo rechts">
+  </div>
+
+  <div class="wrap">
+    <div class="toolbar">
+      <h2>Snackliste</h2>
+      <div class="info" id="userInfo"></div>
+    </div>
+
+    <!-- Termin hinzufügen (nur Fr oder So) -->
+    <div class="add-box">
+      <label for="datePicker">Neuen Termin hinzufügen (nur Freitag oder Sonntag):</label>
+      <input type="date" id="datePicker" />
+      <button class="btn" id="addBtn">Termin hinzufügen</button>
+      <button class="btn secondary" id="nextFriBtn">Nächster Freitag</button>
+      <button class="btn secondary" id="nextSunBtn">Nächster Sonntag</button>
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="list" id="list"></div>
+  </div>
+
+  <!-- Home -->
+  <button class="home-btn" onclick="location.href='hauptseite.html'">
+    <img src="home.jpg" alt="Home">
+  </button>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
+  <script>
+    /* =========================
+       Firebase Init
+       ========================= */
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+        apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
+        authDomain: "wt-plus-login.firebaseapp.com",
+        databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
+        projectId: "wt-plus-login",
+        storageBucket: "wt-plus-login.firebasestorage.app",
+        messagingSenderId: "775441256129",
+        appId: "1:775441256129:web:64b962f72181248ef04e40"
+      });
+    }
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    /* =========================
+       Helpers
+       ========================= */
+    const $ = (s)=>document.querySelector(s);
+    const msg = (t, ok=false)=>{
+      const box = $("#msg");
+      box.textContent = t || " ";
+      box.classList.toggle("ok", ok);
+    };
+    const z2 = n => String(n).padStart(2,"0");
+    const toDateId = d => `${d.getFullYear()}-${z2(d.getMonth()+1)}-${z2(d.getDate())}`;
+    const fmtDate = d => d.toLocaleDateString("de-DE",{weekday:"long", year:"numeric", month:"2-digit", day:"2-digit"});
+
+    function startOfDay(d){
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+
+    function nextWeekday(base, weekday){ // 0=So ... 6=Sa
+      const d = startOfDay(base);
+      const diff = (weekday - d.getDay() + 7) % 7;
+      d.setDate(d.getDate() + diff);
+      return d;
+    }
+
+    /* =========================
+       Termin hinzufügen (nur Fr/So)
+       ========================= */
+    $("#nextFriBtn").addEventListener("click", ()=>{
+      const d = nextWeekday(new Date(), 5);
+      $("#datePicker").value = `${d.getFullYear()}-${z2(d.getMonth()+1)}-${z2(d.getDate())}`;
+    });
+    $("#nextSunBtn").addEventListener("click", ()=>{
+      const d = nextWeekday(new Date(), 0);
+      $("#datePicker").value = `${d.getFullYear()}-${z2(d.getMonth()+1)}-${z2(d.getDate())}`;
+    });
+
+    $("#addBtn").addEventListener("click", async ()=>{
+      const val = $("#datePicker").value;
+      if (!val) { msg("Bitte ein Datum auswählen."); return; }
+
+      const [Y,Mo,D] = val.split("-").map(n=>parseInt(n,10));
+      const d = new Date(Y, Mo-1, D);
+
+      const today = startOfDay(new Date());
+      if (d < today) { msg("Datum darf nicht in der Vergangenheit liegen."); return; }
+
+      const wd = d.getDay(); // 0=So, 5=Fr
+      if (!(wd === 0 || wd === 5)){
+        msg("Nur Freitag oder Sonntag sind erlaubt."); return;
+      }
+
+      const id = toDateId(d);
+      const ref = db.collection("snacks").doc(id);
+
+      msg("Leeren Termin anlegen …");
+      try {
+        await db.runTransaction(async (tx)=>{
+          const snap = await tx.get(ref);
+          if (snap.exists) throw new Error("exists");
+          tx.set(ref, {
+            dateId: id,
+            date: firebase.firestore.Timestamp.fromDate(d),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        });
+        msg("Termin angelegt.", true);
+        $("#datePicker").value = "";
+        renderList(auth.currentUser);
+      } catch(e){
+        msg(e.message === "exists" ? "Für dieses Datum existiert bereits ein Eintrag." : "Konnte Termin nicht anlegen.");
+      }
+    });
+
+    /* =========================
+       Liste rendern (nur gespeicherte Termine)
+       ========================= */
+    async function renderList(user){
+      const container = $("#list");
+      container.innerHTML = "";
+
+      const today = startOfDay(new Date());
+      // Lade kommende Termine (z.B. nächste 30 Stück)
+      let q = db.collection("snacks")
+                .where("date", ">=", firebase.firestore.Timestamp.fromDate(today))
+                .orderBy("date", "asc")
+                .limit(30);
+
+      const snap = await q.get();
+      if (snap.empty){
+        msg("Noch keine Termine angelegt. Lege oben einen Freitag oder Sonntag an.");
+        return;
+      } else {
+        msg("");
+      }
+
+      snap.docs.forEach(doc=>{
+        const data = doc.data();
+        const date = data.date?.toDate ? data.date.toDate() : new Date(doc.id);
+
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const left = document.createElement("div");
+        left.innerHTML = `<div class="date">${fmtDate(date)}</div>
+                          <div class="assignee">${
+                            data.assigneeName
+                              ? `Eingetragen: ${data.assigneeName}`
+                              : `<span class="free">Noch frei</span>`
+                          }</div>`;
+
+        const middle = document.createElement("div");
+        const note = document.createElement("input");
+        note.className = "note-input";
+        note.placeholder = "Optionale Notiz (z. B. Obst & Nüsse)";
+        note.value = data.note || "";
+        note.disabled = !(data.assigneeUid === (user && user.uid));
+        middle.appendChild(note);
+
+        const right = document.createElement("div");
+        const btn = document.createElement("button");
+        btn.className = "btn";
+
+        if (!data.assigneeUid){
+          btn.textContent = "Ich übernehme";
+          btn.onclick = ()=> claimSlot(doc.id, date, note.value);
+        } else if (user && data.assigneeUid === user.uid){
+          btn.textContent = "Abgeben";
+          btn.classList.add("secondary");
+          btn.onclick = ()=> releaseSlot(doc.id);
+          note.disabled = false;
+          note.addEventListener("change", ()=>{
+            db.collection("snacks").doc(doc.id).update({
+              note: note.value,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(()=> msg("Notiz gespeichert.", true))
+              .catch(()=> msg("Konnte Notiz nicht speichern."));
+          });
+        } else {
+          btn.textContent = "Belegt";
+          btn.disabled = true;
+        }
+
+        right.appendChild(btn);
+        card.appendChild(left);
+        card.appendChild(middle);
+        card.appendChild(right);
+        container.appendChild(card);
+      });
+    }
+
+    /* =========================
+       Claim / Release
+       ========================= */
+    async function claimSlot(id, dateObj, noteValue){
+      msg("Trage dich ein …");
+      const user = auth.currentUser;
+      if (!user){ location.href = "index.html"; return; }
+
+      const ref = db.collection("snacks").doc(id);
+      try {
+        await db.runTransaction(async (tx)=>{
+          const snap = await tx.get(ref);
+          if (snap.exists && snap.data().assigneeUid) throw new Error("bereits belegt");
+          tx.set(ref, {
+            assigneeUid: user.uid,
+            assigneeName: user.displayName || user.email || "Unbekannt",
+            note: noteValue || "",
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        });
+        msg("Eingetragen – danke!", true);
+      } catch(e){
+        msg(e.message === "bereits belegt" ? "Dieser Termin wurde gerade belegt." : "Fehler beim Eintragen.");
+      } finally {
+        renderList(auth.currentUser);
+      }
+    }
+
+    async function releaseSlot(id){
+      msg("Gib Eintrag frei …");
+      const user = auth.currentUser;
+      if (!user){ location.href = "index.html"; return; }
+
+      const ref = db.collection("snacks").doc(id);
+      try {
+        await db.runTransaction(async (tx)=>{
+          const snap = await tx.get(ref);
+          if (!snap.exists) throw new Error("nicht vorhanden");
+          const data = snap.data();
+          if (data.assigneeUid !== user.uid) throw new Error("nicht-berechtigt");
+          tx.update(ref, {
+            assigneeUid: firebase.firestore.FieldValue.delete(),
+            assigneeName: firebase.firestore.FieldValue.delete(),
+            note: firebase.firestore.FieldValue.delete(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        });
+        msg("Freigegeben.", true);
+      } catch(e){
+        let t = "Konnte nicht freigeben.";
+        if (e.message === "nicht-berechtigt") t = "Nur der eingetragene Nutzer kann freigeben.";
+        msg(t);
+      } finally {
+        renderList(auth.currentUser);
+      }
+    }
+
+    /* =========================
+       Auth-Flow
+       ========================= */
+    auth.onAuthStateChanged((user)=>{
+      if (!user) { location.href = "index.html"; return; }
+      $("#userInfo").textContent = user.email || "";
+      renderList(user);
+    });
+  </script>
+</body>
+</html>

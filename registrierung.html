@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Registrierung</title>
+  <style>
+    :root { --bg:#000; --text:#fff; --card:#111; --border:#2a2a2a; --ok:#2ecc71; --err:#ff6b6b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#000; color:#fff; font-family:Arial, Helvetica, sans-serif; min-height:100vh; display:flex; flex-direction:column; }
+    .header{ display:flex; justify-content:space-between; align-items:center; padding:12px 16px; gap:12px; }
+    .header img{ height:80px; width:auto; object-fit:contain; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
+    .wrap{ flex:1; display:flex; flex-direction:column; align-items:center; padding:16px; }
+    .card{ width:100%; max-width:680px; background:#111; border:1px solid var(--border); border-radius:12px; padding:16px; box-shadow:0 4px 16px rgba(0,0,0,.35); }
+    h1{ margin:0 0 12px; font-size:24px; }
+    .row{ display:flex; gap:12px; align-items:center; margin:10px 0; }
+    .row label{ min-width:120px; }
+    .input, .select{ flex:1; padding:10px 12px; border-radius:10px; border:1px solid #333; background:#000; color:#fff; font-size:16px; }
+    .select:disabled{ opacity:.7; }
+    .btn{ background:#fff; color:#000; border:none; border-radius:12px; padding:10px 18px; font-size:16px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35); }
+    .btn[disabled]{ opacity:.6; cursor:default; }
+    .msg{ margin-top:10px; font-size:14px; }
+    .ok{ color:var(--ok); } .err{ color:var(--err); }
+    .home-btn{ position:fixed; left:18px; bottom:18px; border:none; background:#fff; color:#000; border-radius:50%; padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35); }
+    .home-btn img{ width:32px; height:32px; display:block; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="pluslogo.png" alt="Logo links">
+    <img src="faust.jpg" alt="Logo Mitte">
+    <img src="melsungen.jpg" alt="Logo rechts">
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <h1>Registrierung</h1>
+
+      <div class="row">
+        <label for="email">E-Mail</label>
+        <input id="email" type="email" class="input" autocomplete="email" required />
+      </div>
+
+      <div class="row">
+        <label for="pass">Passwort</label>
+        <input id="pass" type="password" class="input" autocomplete="new-password" required />
+      </div>
+
+      <div class="row">
+        <label for="role">Rolle</label>
+        <select id="role" class="select">
+          <option value="Admin">Admin</option>
+          <option value="Si-Fu">Si-Fu</option>
+          <option value="trainer">Trainer</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label for="school">Schule</label>
+        <select id="school" class="select">
+          <option value="MASTER">MASTER</option>
+          <option value="Melsungen">Melsungen</option>
+          <option value="Guxhagen">Guxhagen</option>
+          <option value="Bad Wildungen">Bad Wildungen</option>
+        </select>
+      </div>
+
+      <div class="row" style="justify-content:flex-end">
+        <button id="registerBtn" class="btn">Registrieren</button>
+      </div>
+
+      <div id="msg" class="msg"></div>
+    </div>
+  </div>
+
+  <button class="home-btn" onclick="location.href='hauptseite.html'">
+    <img src="home.jpg" alt="Home">
+  </button>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-database-compat.js"></script>
+
+  <script>
+    // ---- Firebase Init ----
+    const firebaseConfig = {
+      apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
+      authDomain: "wt-plus-login.firebaseapp.com",
+      databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
+      projectId: "wt-plus-login",
+      storageBucket: "wt-plus-login.firebasestorage.app",
+      messagingSenderId: "775441256129",
+      appId: "1:775441256129:web:64b962f72181248ef04e40"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+    const rtdb = firebase.database();
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    // ---- Helpers ----
+    const $ = s => document.querySelector(s);
+    const setMsg = (t, ok=false) => { const el = $("#msg"); el.textContent=t; el.className = "msg " + (ok?"ok":"err"); };
+
+    // Aktueller Nutzer -> Schule einschränken
+    let currentSchool = "";
+    auth.onAuthStateChanged(async user => {
+      if (!user) { location.href = "index.html"; return; }
+      try {
+        const snap = await db.collection("rollen").doc(user.uid).get();
+        if (snap.exists) currentSchool = (snap.data().school || "");
+      } catch {}
+      const schoolSel = $("#school");
+      if (currentSchool && currentSchool !== "MASTER") { schoolSel.value = currentSchool; schoolSel.disabled = true; }
+    });
+
+    // Rolle-Titel für RTDB-String bauen (Admin/Si-Fu/Trainer)
+    function roleTitleCase(role){
+      role = (role||"").toLowerCase();
+      if (role === "si-fu") return "Si-Fu";
+      if (role === "admin") return "Admin";
+      if (role === "trainer") return "Trainer";
+      return role.charAt(0).toUpperCase() + role.slice(1);
+    }
+
+    // ---- Registrierung ----
+    $("#registerBtn").addEventListener("click", async ()=>{
+      const email = $("#email").value.trim();
+      const pass  = $("#pass").value;
+      let role    = $("#role").value.toLowerCase();     // Firestore klein
+      let school  = $("#school").value;                 // MASTER / Melsungen / ...
+
+      if (!email || !pass) { setMsg("Bitte E-Mail und Passwort eingeben."); return; }
+      if (currentSchool && currentSchool !== "MASTER") school = currentSchool;
+
+      const btn = $("#registerBtn");
+      btn.disabled = true; setMsg("Erstelle Benutzer…", true);
+
+      let secondaryApp = null;
+      try {
+        // Sekundäre App, damit du eingeloggt bleibst
+        secondaryApp = firebase.initializeApp(firebaseConfig, "secondary");
+        const secAuth = secondaryApp.auth();
+
+        // 1) User in Auth
+        const cred = await secAuth.createUserWithEmailAndPassword(email, pass);
+        const newUid = cred.user.uid;
+
+        // 2) Firestore: rollen/{uid}
+        await db.collection("rollen").doc(newUid).set({ role, school });
+
+        // 3) RTDB (legacy Schema): /logintest_Kopie/{uid} = "'Admin,MASTER'"
+        const rtdbValue = `'${roleTitleCase(role)},${school}'`; // mit einfachen Anführungszeichen
+        await rtdb.ref("logintest_Kopie/" + newUid).set(rtdbValue);
+
+        setMsg("✅ Nutzer registriert (Auth) & gespeichert (Firestore + RTDB).", true);
+
+        // Formular zurücksetzen
+        $("#email").value = ""; $("#pass").value = ""; $("#role").value = "trainer";
+        if ($("#school").disabled === false) $("#school").value = "MASTER";
+
+      } catch (err) {
+        console.error(err);
+        let human = "Registrierung fehlgeschlagen.";
+        if (err.code === "auth/email-already-in-use") human = "Diese E-Mail wird bereits verwendet.";
+        else if (err.code === "auth/invalid-email")   human = "E-Mail-Adresse ist ungültig.";
+        else if (err.code === "auth/weak-password")   human = "Passwort ist zu schwach.";
+        else if (String(err).includes("Permission") || String(err).includes("permission")) human = "Keine Berechtigung in der Realtime Database (Regeln prüfen).";
+        setMsg("❌ " + human);
+      } finally {
+        try { if (secondaryApp) await secondaryApp.delete(); } catch {}
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

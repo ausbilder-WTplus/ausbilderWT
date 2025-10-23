@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Trainingszeiten</title>
+  <style>
+    :root{ --bg:#000; --text:#fff; --muted:#aaa; --field:#111; --border:#2a2a2a; --ok:#2ecc71; }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; background:#000; color:#fff; font-family:Arial, Helvetica, sans-serif;
+      -webkit-font-smoothing:antialiased;
+      min-height:100vh; display:flex; flex-direction:column;
+    }
+    .wrap{ width:100%; max-width:1100px; margin:0 auto; padding:20px 16px 80px; }
+
+    /* Kopfzeile mit User-Infos */
+    .top-bar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+    .user-info{
+      background:#111; border:1px solid #333; border-radius:10px;
+      padding:8px 14px; font-size:14px; color:#ddd;
+    }
+    .user-info span{ color:#2ecc71; font-weight:bold; }
+
+    h1{ margin:0 0 8px; font-size:24px; }
+    .hint{ color:var(--muted); margin-bottom:18px; font-size:14px; }
+
+    .day{ margin-top:18px; border-top:1px solid var(--border); padding-top:14px; }
+    .day h2{ margin:0 0 8px; font-size:18px; color:#eaeaea; letter-spacing:.2px; }
+
+    /* Slot-Layout: Label + 6 Eingabefelder + Status */
+    .slot{
+      display:grid;
+      grid-template-columns: 420px repeat(6, minmax(120px,1fr)) 120px;
+      gap:10px; align-items:center; padding:10px 0; border-bottom:1px dashed #1c1c1c;
+    }
+    .label{
+      font-size:15px; color:#eaeaea; line-height:1.3;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .label .daychip{ font-weight:bold; }
+    .label .sep{ opacity:.6; padding:0 6px; }
+    .label .time{ font-weight:bold; letter-spacing:.2px; }
+
+    input.name{
+      background:var(--field); color:#fff; border:1px solid var(--border);
+      border-radius:8px; padding:10px 12px; font-size:15px; outline:none;
+      width:100%;
+    }
+    input.name:disabled{ opacity:.7; color:#bbb; }
+    .status{ font-size:12px; color:var(--muted); opacity:.85; }
+    .status.ok{ color:var(--ok); }
+
+    /* Responsive */
+    @media (max-width:1100px){
+      .slot{
+        grid-template-columns: 1fr; align-items:start;
+      }
+      .label{ grid-column:1 / -1; white-space:normal; }
+      .field{
+        grid-column:1 / -1; display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;
+      }
+      .status{ grid-column:1 / -1; }
+    }
+    @media (max-width:600px){
+      .field{ grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- Kopfzeile -->
+    <div class="top-bar">
+      <h1>Trainingszeiten</h1>
+      <div id="userInfo" class="user-info">
+        Rolle: <span id="userRole">…</span> |
+        Schule: <span id="userSchool">…</span>
+      </div>
+    </div>
+
+    <div class="hint">
+      Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen eintragen.
+      Trainer sehen die Einträge, können sie aber nicht ändern.
+    </div>
+
+    <!-- Tabelle -->
+    <div id="schedule"></div>
+
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
+  <script>
+    // ---------- Firebase Init ----------
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+        apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
+        authDomain: "wt-plus-login.firebaseapp.com",
+        databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
+        projectId: "wt-plus-login",
+        storageBucket: "wt-plus-login.firebasestorage.app",
+        messagingSenderId: "775441256129",
+        appId: "1:775441256129:web:64b962f72181248ef04e40"
+      });
+    }
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    // ---------- Datenmodell ----------
+    // Jetzt mit "what" pro Zeitfenster
+    const SLOTS = [
+      { day: "Montag", slots: [
+        { time: "17:30-18:15", what: "Jugendliche 8-12 Jahre" },
+        { time: "19:30-21:00", what: "Erwachsene ab 13 Jahre" },
+      ]},
+      { day: "Mittwoch", slots: [
+        { time: "16:30-17:15", what: "Minis ab 4 Jahre" },
+        { time: "17:30-18:15", what: "Kids 5-7 Jahre" },
+        { time: "18:30-19:15", what: "Jugendliche 8-12 Jahre" },
+        { time: "19:30-21:00", what: "Erwachsene ab 13 Jahre" },
+      ]},
+      { day: "Donnerstag", slots: [
+        { time: "16:30-17:15", what: "Minis ab 4 Jahre" },
+        { time: "17:30-18:15", what: "Kids 5-7 Jahre" },
+        { time: "18:45-19:45", what: "ChiKung" },
+      ]},
+    ];
+
+    const slug = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
+
+    // ---------- UI Render ----------
+    const root = document.getElementById('schedule');
+
+    function render(role){
+      root.innerHTML="";
+      const canEdit = (role==="admin"||role==="si-fu");
+
+      for(const group of SLOTS){
+        const day=document.createElement('div');
+        day.className='day';
+        day.innerHTML=`<h2>${group.day}</h2>`;
+        root.appendChild(day);
+
+        for(const slot of group.slots){
+          const id = `${slug(group.day)}__${slug(slot.time)}`;
+
+          const row=document.createElement('div');
+          row.className='slot';
+
+          // Label: Tag – What – Zeit
+          const label=document.createElement('div');
+          label.className='label';
+          label.innerHTML = `<span class="daychip">${group.day}</span>
+                             <span class="sep">–</span>
+                             <span class="what">${slot.what || ""}</span>
+                             <span class="sep">–</span>
+                             <span class="time">${slot.time}</span>`;
+
+          // 6 Eingabefelder
+          const field=document.createElement('div');
+          field.className='field';
+          const inputs=[0,1,2,3,4,5].map(i=>{
+            const input=document.createElement('input');
+            input.type='text';
+            input.placeholder=`Name ${i+1}`;
+            input.className='name';
+            input.dataset.slotId=id;
+            input.dataset.index=i;
+            input.disabled=!canEdit;
+            return input;
+          });
+          inputs.forEach(inp=>field.appendChild(inp));
+
+          // Status
+          const status=document.createElement('div');
+          status.className='status';
+          status.id=`st_${id}`;
+          status.textContent=' ';
+
+          row.appendChild(label);
+          row.appendChild(field);
+          row.appendChild(status);
+          day.appendChild(row);
+        }
+      }
+    }
+
+    // ---------- Firestore Load/Save ----------
+    const DOC_REF = () => db.collection('trainingszeiten').doc('belegung');
+
+    async function loadAll(){
+      try{
+        const snap=await DOC_REF().get();
+        return snap.exists?(snap.data()||{}):{};
+      }catch(e){console.error(e);return{};}
+    }
+
+    // Hilfsfunktion: auf 6 Einträge auffüllen
+    function pad6(arr){
+      const out = Array.isArray(arr) ? arr.slice(0,6) : [];
+      while(out.length<6) out.push("");
+      return out;
+    }
+
+    let saveTimer=null;
+    function scheduleSave(slotId){
+      clearTimeout(saveTimer);
+      const st=document.getElementById(`st_${slotId}`);
+      if(st){st.textContent='speichern…';st.classList.remove('ok');}
+      saveTimer=setTimeout(doSave,400);
+    }
+
+    async function doSave(){
+      // Alle Inputs einsammeln → Map slotId -> Array(6)
+      const data={};
+      document.querySelectorAll('input.name').forEach(inp=>{
+        const sid=inp.dataset.slotId;
+        const idx=+inp.dataset.index;
+        data[sid]=pad6(data[sid]);
+        data[sid][idx]=inp.value.trim();
+      });
+      try{
+        await DOC_REF().set(data,{merge:false});
+        Object.keys(data).forEach(sid=>{
+          const st=document.getElementById(`st_${sid}`);
+          if(st){st.textContent='gespeichert';st.classList.add('ok');}
+        });
+      }catch(e){
+        console.error("Speichern fehlgeschlagen:",e);
+        const msg=(e&&e.code)?e.code:(e&&e.message)?e.message:'Fehler';
+        Object.keys(data).forEach(sid=>{
+          const st=document.getElementById(`st_${sid}`);
+          if(st){st.textContent='Fehler: '+msg;st.classList.remove('ok');}
+        });
+      }
+    }
+
+    async function applyLoadedValues(values){
+      document.querySelectorAll('input.name').forEach(inp=>{
+        const sid=inp.dataset.slotId;
+        const idx=+inp.dataset.index;
+        const arr=pad6(values[sid]);
+        inp.value=arr[idx]||"";
+      });
+    }
+
+    function wireInputs(canEdit){
+      if(!canEdit)return;
+      document.querySelectorAll('input.name').forEach(inp=>{
+        inp.addEventListener('input',()=>scheduleSave(inp.dataset.slotId));
+      });
+    }
+
+    // ---------- Auth ----------
+    auth.onAuthStateChanged(async user=>{
+      if(!user){location.href="index.html";return;}
+
+      const normalize = r => {
+        r=(r||"").toLowerCase();
+        if(['administrator','admins','adminstrator'].includes(r))r='admin';
+        if(['trainer/in','trainerin','coach'].includes(r))r='trainer';
+        if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r))r='si-fu';
+        return r;
+      };
+
+      let role=(sessionStorage.getItem('role')||'');
+      let school=(sessionStorage.getItem('school')||'');
+      role=normalize(role);
+
+      if(!role || !school){
+        try{
+          const rdoc=await db.collection('rollen').doc(user.uid).get();
+          if(rdoc.exists){
+            const data=rdoc.data();
+            role=normalize(data.role||'user');
+            school=data.school||'';
+            sessionStorage.setItem('role',role);
+            sessionStorage.setItem('school',school);
+          }else{
+            role='user';
+          }
+        }catch{ role='user'; }
+      }
+
+      document.getElementById('userRole').textContent   = role || '–';
+      document.getElementById('userSchool').textContent = school || '–';
+
+      render(role);
+      const values=await loadAll();
+      await applyLoadedValues(values);
+
+      const canEdit=(role==='admin'||role==='si-fu');
+      wireInputs(canEdit);
+    });
+  </script>
+</body>
+</html>

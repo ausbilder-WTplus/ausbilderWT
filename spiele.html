@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spiele</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f8f8f8;
+      text-align: center;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Logo oben */
+    .header img {
+      width: 100%;
+      max-width: 600px;
+      height: auto;
+    }
+
+    /* Google Drive Betrachter */
+    .viewer {
+      flex: 1;
+      margin: 10px;
+    }
+    .viewer iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 8px;
+    }
+
+    /* Home-Button */
+    .home-btn {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: white;
+      border: none;
+      border-radius: 50%;
+      padding: 10px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .home-btn img {
+      width: 32px;
+      height: 32px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Überschrift / Logo -->
+  <div class="header">
+    <img src="spielelogo.jpg" alt="Spiele Logo">
+  </div>
+
+  <!-- Webviewer: Google-Drive-Ordner -->
+  <div class="viewer">
+    <iframe src="https://drive.google.com/embeddedfolderview?id=1jwkos34rClZMloyCsnZX1RI1UQLa1_x1#grid" allowfullscreen></iframe>
+  </div>
+
+  <!-- Home-Button -->
+  <button class="home-btn" onclick="window.location.href='index.html'">
+    <img src="home.jpg" alt="Home">
+  </button>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+
+  <script>
+    // Firebase initialisieren
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+   apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
+    authDomain: "wt-plus-login.firebaseapp.com",
+    databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
+    projectId: "wt-plus-login",
+    storageBucket: "wt-plus-login.firebasestorage.app",
+    messagingSenderId: "775441256129",
+    appId: "1:775441256129:web:64b962f72181248ef04e40"
+      });
+    }
+
+    const auth = firebase.auth();
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    // Guard: nur eingeloggte Nutzer dürfen die Seite sehen
+    auth.onAuthStateChanged((user) => {
+      if (!user) {
+        location.href = "index.html"; // zurück zum Login
+      }
+    });
+  </script>
+</body>
+</html>
+

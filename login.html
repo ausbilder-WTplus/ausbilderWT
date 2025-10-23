@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login</title>
+  <style>
+    :root { --bg:#000; --text:#fff; --pill:#fff; --pillText:#000; }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; background:var(--bg); color:var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      min-height:100vh; display:flex; flex-direction:column;
+    }
+
+    /* Header mit 3 Logos */
+    .header {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:10px 12px; gap:10px;
+    }
+    .header img { height:42px; width:auto; object-fit:contain; }
+
+    /* Inhalt mittig */
+    .wrap {
+      flex:1; display:flex; flex-direction:column; align-items:center; gap:14px;
+      padding:12px;
+    }
+
+    /* Label-Pills „Nutzer/Passwort“ + Eingabefelder */
+    .row {
+      display:flex; align-items:center; gap:12px; width:100%;
+      max-width:560px;
+    }
+    .pill {
+      background:var(--pill); color:var(--pillText);
+      padding:10px 16px; border-radius:14px; font-weight:bold; min-width:110px;
+      text-align:center; white-space:nowrap;
+    }
+    .input {
+      flex:1; background:var(--pill); color:#111;
+      border:none; border-radius:10px; padding:12px 14px; font-size:16px;
+      outline:none;
+    }
+
+    /* Login-Button */
+    .login-btn {
+      background:#fff; color:#000; border:none; border-radius:16px;
+      padding:10px 24px; font-size:18px; cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.35); margin-top:6px;
+    }
+
+    /* Message-Bar (weiß) */
+    .msg {
+      width:100%; max-width:560px; min-height:40px;
+      background:#fff; color:#111; border-radius:6px;
+      display:flex; align-items:center; padding:8px 10px; margin-top:6px;
+      font-size:14px;
+    }
+    .msg.empty { background:rgba(255,255,255,.12); color:#ddd; border:1px solid #333; }
+
+    /* Home-Button unten links */
+    .home-btn {
+      position:fixed; left:16px; bottom:16px; background:#fff;
+      border:none; border-radius:12px; padding:6px; cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    .home-btn img { width:34px; height:34px; display:block; }
+
+    @media (max-width:480px){
+      .header img{ height:36px; }
+      .pill{ min-width:96px; padding:8px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header mit 3 Logos (Dateinamen ggf. anpassen) -->
+  <div class="header">
+    <img id="logo-left" src="pluslogo.png" alt="Logo links">
+    <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
+  </div>
+
+  <!-- Formularbereich -->
+  <div class="wrap">
+    <div class="row">
+      <div class="pill">Nutzer</div>
+      <input id="user" class="input" type="text" autocomplete="username" />
+    </div>
+
+    <div class="row">
+      <div class="pill">Passwort</div>
+      <input id="pass" class="input" type="password" autocomplete="current-password" />
+    </div>
+
+    <button class="login-btn" id="loginBtn">Login</button>
+
+    <!-- Message-Leiste (weiß) -->
+    <div id="msg" class="msg empty"> </div>
+  </div>
+
+  <!-- Home -->
+  <button class="home-btn" onclick="location.href='index.html'">
+    <img src="home.jpg" alt="Home">
+  </button>
+
+  <!-- Login-Logik -->
+  <script>
+  // === DEIN veröffentlichter CSV-Link (Google Sheets -> Im Web veröffentlichen -> CSV)
+  const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQzW4h50a-fzAJI_JmCQnbvojwAUKrgXzlxGTz_DHk8FbjMMGv-nzrlVtPawvQQ_zyiC_eLELNMDFuB/pub?output=csv";
+
+  // Optionen
+  const USER_CASE_INSENSITIVE = true; // Benutzername ohne Groß/Klein vergleichen
+  const TRIM_ALL_FIELDS = true;       // Leerzeichen um Felder herum entfernen
+
+  const $ = (s)=>document.querySelector(s);
+  const msg = (t, ok=false)=>{
+    const box = $("#msg");
+    box.textContent = t || " ";
+    box.classList.toggle("empty", !t);
+    box.style.background = ok ? "#e7ffe7" : "#fff";
+  };
+
+  // CSV-Parser (unterstützt Anführungszeichen, Kommas; fallback auf ; )
+  function parseCSV(text) {
+    const rows = [];
+    let cur = "", row = [], inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i], n = text[i+1];
+      if (c === '"' && inQuotes && n === '"') { cur += '"'; i++; continue; }
+      if (c === '"') { inQuotes = !inQuotes; continue; }
+      if (!inQuotes && c === ',') { row.push(cur); cur = ""; continue; }
+      if (!inQuotes && (c === '\n' || c === '\r')) {
+        if (cur.length || row.length) { row.push(cur); rows.push(row); }
+        cur = ""; row = [];
+        continue;
+      }
+      cur += c;
+    }
+    if (cur.length || row.length) { row.push(cur); rows.push(row); }
+    if (rows.length === 1 && rows[0].length === 1 && text.includes(';')) {
+      return text.split(/\r?\n/).filter(Boolean).map(line => line.split(';'));
+    }
+    return rows;
+  }
+  const normalizeRow = r => (r||[]).map(v => {
+    let x = v ?? "";
+    if (TRIM_ALL_FIELDS) x = x.trim();
+    return x;
+  });
+
+  // robustes Laden mit Fallback auf CORS-Proxy, plus Cachebuster
+  async function loadCSVText() {
+    const primary = SHEET_URL + (SHEET_URL.includes("?") ? "&" : "?") + "cb=" + Date.now();
+    try {
+      const res = await fetch(primary, { cache: "no-store" });
+      console.log("[fetch primary]", res.status, res.statusText);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = (await res.text()).replace(/^\uFEFF/, "");
+      // Wenn es nach HTML aussieht (z. B. Fehler-/Login-Seite), auf Proxy fallen
+      if (/^\s*</.test(text)) throw new Error("Got HTML instead of CSV");
+      return text;
+    } catch (e) {
+      console.warn("[primary failed]", e);
+      const proxy = "https://api.allorigins.win/raw?url=" + encodeURIComponent(SHEET_URL) + "&cb=" + Date.now();
+      const res2 = await fetch(proxy, { cache: "no-store" });
+      console.log("[fetch proxy]", res2.status, res2.statusText);
+      if (!res2.ok) throw new Error("Proxy HTTP " + res2.status);
+      const text2 = (await res2.text()).replace(/^\uFEFF/, "");
+      return text2;
+    }
+  }
+
+  async function fetchUsers() {
+    const text = await loadCSVText();
+    console.log("[CSV raw head]", text.slice(0, 200) + (text.length > 200 ? "…" : ""));
+    let rows = parseCSV(text).map(normalizeRow).filter(r => r.some(x => x.length));
+    console.log("[CSV parsed rows]", rows);
+
+    // Header dynamisch erkennen (Spaltennamen egal in welcher Reihenfolge)
+    let startIdx = 0, idxUser = 0, idxPass = 1, idxRole = 2;
+    if (rows.length > 0) {
+      const h = rows[0].map(h => (h || "").toLowerCase());
+      const hu = h.indexOf("nutzer");
+      const hp = h.indexOf("passwort");
+      const hr = h.indexOf("rolle");
+      if (hu !== -1 || hp !== -1 || hr !== -1) {
+        idxUser = hu !== -1 ? hu : 0;
+        idxPass = hp !== -1 ? hp : 1;
+        idxRole = hr !== -1 ? hr : 2;
+        startIdx = 1;
+      }
+    }
+    console.log(`[HeaderMap] user=${idxUser} pass=${idxPass} role=${idxRole} (start ab Zeile ${startIdx+1})`);
+
+    const users = rows.slice(startIdx).map(r => ({
+      user: r[idxUser] ?? "",
+      pass: r[idxPass] ?? "",
+      role: r[idxRole] ?? ""
+    }));
+    console.log("[Users]", users);
+    return users;
+  }
+
+  async function authFromCSV(inputUser, inputPass) {
+    const users = await fetchUsers();
+    const wantUser = USER_CASE_INSENSITIVE ? (inputUser || "").toLowerCase() : (inputUser || "");
+    for (const row of users) {
+      const rowUser = USER_CASE_INSENSITIVE ? (row.user || "").toLowerCase() : (row.user || "");
+      const rowPass = row.pass || "";
+      if (rowUser === wantUser && rowPass === inputPass) {
+        return { ok: true, role: row.role || "" };
+      }
+    }
+    return { ok: false };
+  }
+
+  // UI-Events
+  $("#user").addEventListener("keydown", e => { if (e.key === "Enter") $("#pass").focus(); });
+  $("#pass").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+  $("#loginBtn").addEventListener("click", doLogin);
+
+  async function doLogin(){
+    const u = $("#user").value;
+    const p = $("#pass").value;
+    if (!u.trim() || !p) { msg("Bitte Nutzer und Passwort eingeben."); return; }
+
+    msg("Prüfe Daten …");
+    try {
+      const res = await authFromCSV(u, p);
+      if (res.ok) {
+        msg("Erfolgreich angemeldet.", true);
+        sessionStorage.setItem("loggedInUser", u.trim());
+        sessionStorage.setItem("role", res.role || "");
+        setTimeout(() => location.href = "administrator.html", 350);
+      } else {
+        msg("Falscher Nutzer oder Passwort.");
+      }
+    } catch (err) {
+      console.error("[Login Fehler]", err);
+      msg("Fehler beim Laden/Prüfen der Zugangsdaten.");
+    }
+  }
+</script>
+
+</body>
+</html>

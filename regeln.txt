@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Hilfsfunktion: hat der aktuelle Nutzer Admin- oder Si-Fu-Rechte?
+    function isPrivileged() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/rollen/$(request.auth.uid))
+        && (get(/databases/$(database)/documents/rollen/$(request.auth.uid)).data.role
+            in ['admin','si-fu','Admin','Si-Fu']);
+    }
+
+    // ---- Rollen ----
+    match /rollen/{userId} {
+      // Lesen: eigenes Doc ODER Admin/Si-Fu
+      allow read: if request.auth != null
+                  && (request.auth.uid == userId || isPrivileged());
+
+      // Anlegen:
+      // - der Nutzer darf sein EIGENES Doc anlegen (Bootstrap),
+      // - Admin/Si-Fu dürfen BELIEBIGE Docs anlegen (z. B. Registrierung für andere)
+      allow create: if request.auth != null
+                    && (request.auth.uid == userId || isPrivileged());
+
+      // Ändern/Löschen: nur Admin/Si-Fu
+      allow update, delete: if isPrivileged();
+    }
+
+    // ---- Trainingszeiten ----
+    match /trainingszeiten/{doc} {
+      // lesen: alle eingeloggten Nutzer
+      allow read: if true;
+
+      // schreiben: nur Admin/Si-Fu
+      allow write: if isPrivileged();
+    }
+  }
+}

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WT-Ausbilder</title>
+  <style>
+    :root { --bg: #000; --text: #fff; --accent-bg: #fff; --accent-text:#000; }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg); color: var(--text);
+      -webkit-font-smoothing:antialiased;
+    }
+
+    /* Header mit 3 Logos */
+    .header {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px;
+      gap:12px;
+    }
+    .header img { height:80px; width:auto; object-fit:contain; }
+
+    /* Zentrum */
+    .center {
+      display:flex; flex-direction:column; align-items:center;
+    }
+    .menu-btn {
+      background: var(--accent-bg); color:var(--accent-text);
+      border: none; padding:10px 20px; font-size:18px;
+      border-radius:12px; cursor:pointer; margin-top:14px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    /* Button-Zeile unter dem Menü */
+    .quick-actions-row {
+      margin-top:12px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      justify-content:center;
+    }
+    .quick-actions-row button {
+      background:#fff; color:#000; border:none;
+      border-radius:10px; padding:10px 12px; font-weight:bold;
+      cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35);
+      transition: transform .1s;
+    }
+    .quick-actions-row button:hover { transform: scale(1.05); }
+
+    /* Ausklapp-Menü */
+    .menu-list {
+      display:none; flex-direction:column; gap:10px; margin-top:12px;
+    }
+    .menu-list button {
+      background: transparent; color:var(--text); border:1px solid #444;
+      padding:8px 12px; border-radius:8px; cursor:pointer;
+    }
+
+    /* Newsticker */
+    .ticker {
+      margin: 20px auto; width:90%; max-width:900px;
+      overflow:hidden; border-radius:8px; border:1px solid #222;
+      padding:10px; text-align:left;
+      background: rgba(255,255,255,0.03);
+    }
+    .ticker-inner { display:inline-block; white-space:nowrap; padding-left:100%; font-size:16px; }
+    @keyframes scroll {
+      0% { transform: translateX(0%); }
+      100% { transform: translateX(-100%); }
+    }
+    .ticker-inner.animate { animation: scroll linear infinite; animation-duration:12s; }
+
+    /* Kalender iframe */
+    .calendar-wrap { margin:18px auto; width:100%; max-width:1000px; height:520px; }
+    .calendar-wrap iframe { width:100%; height:100%; border: none; border-radius:8px; background:#fff; }
+
+    /* Responsive */
+    @media (max-width:750px) {
+      .header img { height:44px; }
+      .quick-actions-row { gap:8px; }
+    }
+    @media (max-width:480px) {
+      .header img { height:40px; }
+      .calendar-wrap { height:420px; }
+      .menu-btn { font-size:16px; padding:8px 14px; }
+      .quick-actions-row button { font-size:14px; padding:8px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header / Logos -->
+  <div class="header">
+    <img id="logo-left" src="pluslogo.png" alt="Logo links">
+    <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
+  </div>
+
+  <!-- Menü-Button oben -->
+  <div class="center">
+    <button class="menu-btn" id="menuToggle">Menü</button>
+
+    <!-- Buttons in zweiter Zeile (rollenbasiert) -->
+    <div class="quick-actions-row" id="quickActionsRow">
+      <button data-role="admin" onclick="window.open('https://kalender.digital/ba194cc88c000b471cca','_blank')">Kalender</button>
+      <button data-role="admin,trainer" onclick="window.open('https://onedrive.live.com/view.aspx?resid=95B1CC2FA45FC6F3!s0d552776cf0f4dac804f61a8895851d6','_blank')">One Note</button>
+      <button data-role="admin,trainer" onclick="window.open('https://drive.google.com/drive/folders/1TCANqOWg8CRggKd1Usclv7ed6ubbbUp4?usp=sharing','_blank')">Vorlagen</button>
+      <button data-role="admin" onclick="window.open('https://drive.google.com/drive/folders/16KKr7v2r9QbAPNmIUZbSoO0KfvWbtPai?usp=sharing','_blank')">Drive</button>
+
+      <!-- Für alle sichtbar (ohne data-role) -->
+      <button class="btn" onclick="location.href='passwort-aendern.html'">Passwort ändern</button>
+      <button onclick="location.href='links.html'">Trainingsausrüstung</button>
+      <button onclick="location.href='snackliste.html'">Snackliste</button>
+
+      <!-- Nur für Admin & Si-Fu, am Ende -->
+      <button data-role="admin,si-fu" onclick="location.href='registrierung.html'">Registrierung</button>
+      <button data-role="admin,si-fu" onclick="location.href='einstellungen.html'">Einstellungen</button>
+    </div>
+
+    <!-- Ausklapp-Menü -->
+    <div id="menuList" class="menu-list" role="menu" aria-hidden="true">
+      <button onclick="location.href='ausbilderunterlagen.html'">Ausbilderunterlagen</button>
+      <button onclick="location.href='spiele.html'">Spiele</button>
+      <button onclick="location.href='bilder.html'">Bilder</button>
+      <button onclick="location.href='videos.html'">Videos</button>
+
+      <!-- NEU: weitere Menüoptionen -->
+      <button onclick="location.href='schuluebersicht.html'">Schulübersicht</button>
+      <button onclick="location.href='anleitungen.html'">Anleitungen</button>
+      <button onclick="location.href='trainingszeiten.html'">Trainingszeiten</button>
+      <button onclick="location.href='checkliste.html'">Checkliste</button>
+    </div>
+
+    <div style="margin-top:8px; font-size:14px; color:#ddd;">Newsticker</div>
+  </div>
+
+  <!-- Newsticker -->
+  <div class="ticker" aria-live="polite">
+    <div id="tickerInner" class="ticker-inner">Lade Newsticker…</div>
+  </div>
+
+  <!-- Kalender (iframe) -->
+  <div class="calendar-wrap">
+    <iframe id="calendarFrame" src="https://kalender.digital/704b2636b9f5eade1f50" title="Trainingskalender"></iframe>
+  </div>
+
+  <!-- Firebase SDKs (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
+  <script>
+    // ---- Firebase init (gleiche Config wie in index.html) ----
+    firebase.initializeApp({
+      apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
+      authDomain: "wt-plus-login.firebaseapp.com",
+      databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
+      projectId: "wt-plus-login",
+      storageBucket: "wt-plus-login.firebasestorage.app",
+      messagingSenderId: "775441256129",
+      appId: "1:775441256129:web:64b962f72181248ef04e40"
+    });
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    // ---- Menü ein-/ausblenden ----
+    const toggle = document.getElementById('menuToggle');
+    const menu = document.getElementById('menuList');
+    toggle.addEventListener('click', () => {
+      const visible = menu.style.display === 'flex';
+      menu.style.display = visible ? 'none' : 'flex';
+      menu.setAttribute('aria-hidden', visible ? 'true' : 'false');
+    });
+
+    // ---- Rollen-Buttons anfangs verstecken ----
+    const scope = document.getElementById('quickActionsRow');
+    if (scope) scope.querySelectorAll('[data-role]').forEach(btn => btn.style.display = 'none');
+
+    // ---- Auth-Guard + Rolle laden ----
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        location.href = "index.html";
+        return;
+      }
+
+      try {
+        let role = (sessionStorage.getItem('role') || '').toLowerCase();
+        if (!role) {
+          const snap = await db.collection('rollen').doc(user.uid).get();
+          role = (snap.exists ? (snap.data().role || 'user') : 'user').toLowerCase();
+          sessionStorage.setItem('role', role);
+          sessionStorage.setItem('loggedInUser', user.email || '');
+        }
+
+        // Schreibvarianten normalisieren
+        if (['administrator','admins','adminstrator'].includes(role)) role = 'admin';
+        if (['trainer/in','trainerin','coach'].includes(role)) role = 'trainer';
+        if (['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(role)) role = 'si-fu';
+
+        if (scope) {
+          scope.querySelectorAll('[data-role]').forEach(btn => btn.style.display = 'none');
+          const showAll = sel => scope.querySelectorAll(sel).forEach(btn => btn.style.display = 'inline-block');
+
+          if (role === 'admin') {
+            showAll('[data-role*="admin"]');
+            showAll('[data-role*="trainer"]');
+            showAll('[data-role*="si-fu"]');
+          } else if (role === 'si-fu') {
+            showAll('[data-role*="si-fu"]');
+          } else if (role === 'trainer') {
+            showAll('[data-role*="trainer"]');
+          }
+        }
+      } catch (e) {
+        console.error('[Rollen-Laden Fehler]', e);
+      }
+    });
+
+    // ---- Newsticker ----
+    const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTqv9vVFE1kHZdb48JLBpUd3uwsin78PVjCLEGDmUztI78RYSPstjAxUi0uuwV-34fe91G4SfuQHGsl/pub?output=csv";
+    async function loadTicker() {
+      try {
+        const res = await fetch(csvUrl);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        const clean = text.replace(/^\uFEFF/, "").trim();
+        const first = clean.split(/\r?\n/).find(line => line.trim() !== "") || "Keine Daten gefunden";
+        const el = document.getElementById("tickerInner");
+        el.textContent = first;
+        const dur = Math.min(Math.max(first.length / 6, 8), 30);
+        el.classList.add('animate');
+        el.style.animationDuration = dur + 's';
+      } catch (e) {
+        console.error(e);
+        document.getElementById("tickerInner").textContent = "Fehler beim Laden des Newstickers";
+      }
+    }
+    loadTicker();
+  </script>
+</body>
+</html>

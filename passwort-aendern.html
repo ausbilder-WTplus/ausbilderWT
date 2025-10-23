@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Passwort ändern</title>
+  <style>
+    :root { --bg:#000; --text:#fff; --pill:#fff; --pillText:#000; }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; background:var(--bg); color:var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    }
+
+    /* Header */
+    .header{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; gap:12px; width:100%;
+    }
+    .header img{ height:80px; width:auto; object-fit:contain; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
+
+    /* Formular */
+    .wrap {
+      flex:1; display:flex; flex-direction:column; align-items:center; gap:14px;
+      padding:20px; width:100%;
+    }
+    .row {
+      display:flex; align-items:center; gap:12px; width:100%; max-width:480px;
+    }
+    .pill {
+      background:var(--pill); color:var(--pillText);
+      padding:10px 16px; border-radius:14px; font-weight:bold;
+      min-width:140px; text-align:center;
+    }
+    .input {
+      flex:1; background:var(--pill); color:#111; border:none;
+      border-radius:10px; padding:12px 14px; font-size:16px; outline:none;
+    }
+    .btn {
+      background:#fff; color:#000; border:none; border-radius:16px;
+      padding:10px 24px; font-size:18px; cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.35); margin-top:8px;
+    }
+    .btn[disabled]{ opacity:.6; cursor:default; }
+
+    .msg {
+      width:100%; max-width:480px; min-height:40px;
+      background:#fff; color:#111; border-radius:6px;
+      display:flex; align-items:center; padding:8px 10px; margin-top:8px;
+      font-size:14px;
+    }
+    .msg.empty { background:rgba(255,255,255,.12); color:#ddd; border:1px solid #333; }
+
+    /* Home-Button */
+    .home-btn{
+      position:fixed; left:18px; bottom:18px;
+      background:#fff; color:#000; border:none;
+      border-radius:50%; padding:10px; cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    .home-btn img{ width:32px; height:32px; display:block; }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <img src="pluslogo.png" alt="Logo links">
+    <img src="faust.jpg" alt="Logo Mitte">
+    <img src="melsungen.jpg" alt="Logo rechts">
+  </div>
+
+  <!-- Inhalt -->
+  <div class="wrap">
+    <h2>Passwort ändern</h2>
+
+    <div class="row">
+      <div class="pill">Neues Passwort</div>
+      <input id="newPass1" class="input" type="password" placeholder="Neues Passwort" />
+    </div>
+
+    <div class="row">
+      <div class="pill">Wiederholen</div>
+      <input id="newPass2" class="input" type="password" placeholder="Wiederholen" />
+    </div>
+
+    <button class="btn" id="changeBtn">Ändern</button>
+
+    <div id="msg" class="msg empty"> </div>
+  </div>
+
+  <!-- Home -->
+  <button class="home-btn" onclick="location.href='hauptseite.html'">
+    <img src="home.jpg" alt="Home">
+  </button>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+
+  <script>
+    // ---------- Firebase Init ----------
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+        apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
+        authDomain: "wt-plus-login.firebaseapp.com",
+        databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
+        projectId: "wt-plus-login",
+        storageBucket: "wt-plus-login.firebasestorage.app",
+        messagingSenderId: "775441256129",
+        appId: "1:775441256129:web:64b962f72181248ef04e40"
+      });
+    }
+    const auth = firebase.auth();
+
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    // ---------- Auth-Check ----------
+    auth.onAuthStateChanged((user) => {
+      if (!user) location.href = "index.html";
+    });
+
+    const $ = s => document.querySelector(s);
+    const msg = (t, ok=false)=>{
+      const box=$("#msg");
+      box.textContent=t||" ";
+      box.classList.toggle("empty",!t);
+      box.style.background = ok ? "#e7ffe7" : "#fff";
+    };
+
+    // ---------- Passwort ändern ----------
+    $("#changeBtn").addEventListener("click", async ()=>{
+      const pass1=$("#newPass1").value.trim();
+      const pass2=$("#newPass2").value.trim();
+
+      if (!pass1 || !pass2) { msg("Bitte beide Felder ausfüllen."); return; }
+      if (pass1 !== pass2) { msg("Passwörter stimmen nicht überein."); return; }
+      if (pass1.length < 6) { msg("Passwort muss mindestens 6 Zeichen haben."); return; }
+
+      const btn=$("#changeBtn");
+      btn.disabled=true; msg("Ändere Passwort …");
+
+      try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Kein Benutzer angemeldet.");
+
+        await user.updatePassword(pass1);
+        msg("Passwort erfolgreich geändert.", true);
+        setTimeout(()=>location.href="hauptseite.html",1000);
+      } catch(err) {
+        console.error("[Passwort ändern Fehler]", err);
+        let text="Fehler beim Ändern des Passworts.";
+        if (err.code==="auth/requires-recent-login")
+          text="Bitte loggen Sie sich erneut ein, um das Passwort zu ändern.";
+        msg(text);
+      } finally {
+        btn.disabled=false;
+      }
+    });
+  </script>
+</body>
+</html>
