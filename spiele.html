@@ -13,6 +13,7 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      -webkit-font-smoothing: antialiased;
     }
 
     /* Logo oben */
@@ -32,6 +33,7 @@
       height: 100%;
       border: none;
       border-radius: 8px;
+      background: #fff;
     }
 
     /* Home-Button */
@@ -49,6 +51,7 @@
     .home-btn img {
       width: 32px;
       height: 32px;
+      display: block;
     }
   </style>
 </head>
@@ -72,20 +75,12 @@
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
 
-  <script>
-    // Firebase initialisieren
-    if (!firebase.apps.length) {
-      firebase.initializeApp({
-   apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
-    authDomain: "wt-plus-login.firebaseapp.com",
-    databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
-    projectId: "wt-plus-login",
-    storageBucket: "wt-plus-login.firebasestorage.app",
-    messagingSenderId: "775441256129",
-    appId: "1:775441256129:web:64b962f72181248ef04e40"
-      });
-    }
+  <!-- Zentrale Firebase-Config -->
+  <script src="firebase-config.js"></script>
 
+  <script>
+    // Firebase zentral initialisieren
+    firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
@@ -98,4 +93,3 @@
   </script>
 </body>
 </html>
-

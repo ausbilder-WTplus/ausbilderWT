@@ -77,9 +77,9 @@
 
   <!-- Header -->
   <div class="header">
-    <img id="logo-left" src="pluslogo.png" alt="Logo links">
+    <img id="logo-left" src="pluslogo.jpg" alt="Logo links">
     <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
-    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
+    <img id="logo-right" src="Ewto.jpg" alt="Logo rechts">
   </div>
 
   <!-- Nutzung.html oben einblenden -->
@@ -114,17 +114,12 @@
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 
+  <!-- Zentrale Firebase-Config (statt hardcodierter initializeApp-Config) -->
+  <script src="firebase-config.js"></script>
+
   <script>
-    // ---------- Firebase Init ----------
-    firebase.initializeApp({
-      apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
-      authDomain: "wt-plus-login.firebaseapp.com",
-      databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
-      projectId: "wt-plus-login",
-      storageBucket: "wt-plus-login.firebasestorage.app",
-      messagingSenderId: "775441256129",
-      appId: "1:775441256129:web:64b962f72181248ef04e40"
-    });
+    // ---------- Firebase Init (zentral) ----------
+    firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.firestore();
 
@@ -231,7 +226,7 @@
       }
     }
 
-    // ---------- 🆕 Passwort-vergessen-Funktion ----------
+    // ---------- Passwort-vergessen ----------
     $("#forgotBtn").addEventListener("click", async () => {
       const email = $("#user").value.trim();
       if (!email) { msg("Bitte zuerst Ihre E-Mail-Adresse eingeben."); return; }

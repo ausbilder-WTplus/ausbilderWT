@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mein Profil</title>
+  <style>
+    :root { --bg:#000; --text:#fff; --card:#111; --border:#333; --muted:#bbb; --ok:#4ade80; --err:#f87171; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family: Arial, Helvetica, sans-serif; }
+    .wrap { max-width:980px; margin:0 auto; padding:16px; }
+    h1 { margin:8px 0 16px; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; }
+    .card { flex:1 1 300px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+    .card h3 { margin:0 0 10px; }
+    .kv { display:grid; grid-template-columns: 180px 1fr; gap:8px 12px; }
+    .kv div { padding:4px 0; }
+    .muted { color:var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+    button { background:#fff; color:#000; border:none; border-radius:10px; padding:8px 12px; font-weight:bold; cursor:pointer; }
+    button.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+    pre { white-space:pre-wrap; background:#0c0c0c; border:1px solid #222; color:#ddd; padding:12px; border-radius:8px; max-height:320px; overflow:auto; font-size:12px; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    @media (max-width:800px){ .grid2 { grid-template-columns: 1fr; } }
+    .ok { color:var(--ok); } .err { color:var(--err); }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <h1>👤 Mein Profil</h1>
+    <div class="actions">
+      <button onclick="location.href='hauptseite.html'">Zur Hauptseite</button>
+      <button id="refreshBtn" class="ghost">Aktualisieren</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- Auth-Profil -->
+    <div class="card">
+      <h3>Login / Authentication</h3>
+      <div class="kv">
+        <div class="muted">UID</div>          <div class="mono" id="uid">–</div>
+        <div class="muted">E-Mail</div>       <div class="mono" id="email">–</div>
+        <div class="muted">Verifiziert</div>  <div id="verified">–</div>
+        <div class="muted">Anzeigename</div>  <div id="displayName">–</div>
+        <div class="muted">Provider</div>     <div id="providers">–</div>
+        <div class="muted">Erstellt am</div>  <div id="created">–</div>
+        <div class="muted">Letzte Anmeldung</div><div id="lastLogin">–</div>
+        <div class="muted">Foto-URL</div>     <div class="mono" id="photoURL">–</div>
+      </div>
+      <div class="actions" style="margin-top:10px">
+        <button id="copyUidBtn" class="ghost">UID kopieren</button>
+        <button id="copyEmailBtn" class="ghost">E-Mail kopieren</button>
+      </div>
+    </div>
+
+    <!-- Firestore-Daten -->
+    <div class="card">
+      <h3>Firestore – Daten zu meiner UID</h3>
+      <div class="muted" style="margin-bottom:8px">Es werden die Dokumente in den üblichen Collections gesucht: <span class="mono">rollen</span>, <span class="mono">users</span>, <span class="mono">profiles</span>, <span class="mono">personen</span>, <span class="mono">mitglieder</span>.</div>
+      <div id="fsContainer" class="grid2">
+        <!-- dynamisch befüllt: je Collection ein Kasten -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Rohdaten / Debug -->
+  <div class="card" style="margin-top:16px;">
+    <h3>Rohdaten</h3>
+    <pre id="rawAuth">Lade …</pre>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+
+<script>
+(function(){
+  if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+  const auth = firebase.auth();
+  const db   = firebase.firestore();
+
+  const uidEl = document.getElementById('uid');
+  const emailEl = document.getElementById('email');
+  const verifiedEl = document.getElementById('verified');
+  const displayNameEl = document.getElementById('displayName');
+  const providersEl = document.getElementById('providers');
+  const createdEl = document.getElementById('created');
+  const lastLoginEl = document.getElementById('lastLogin');
+  const photoURLEl = document.getElementById('photoURL');
+  const rawAuthEl = document.getElementById('rawAuth');
+  const fsContainer = document.getElementById('fsContainer');
+
+  const collectionsToCheck = ['rollen','users','profiles','personen','mitglieder'];
+
+  function setKV(el, val){ el.textContent = (val===undefined || val===null || val==='') ? '–' : String(val); }
+
+  function cardForCollection(name, data){
+    const wrap = document.createElement('div');
+    wrap.className = 'card';
+    wrap.style.padding = '12px';
+    wrap.innerHTML = `<h3 style="margin:0 0 8px">${name}</h3>
+      ${data ? `<pre>${JSON.stringify(data, null, 2)}</pre>` : '<div class="muted">Kein Dokument gefunden.</div>'}`;
+    return wrap;
+  }
+
+  async function loadFirestoreDocs(uid){
+    fsContainer.innerHTML = '';
+    for (const coll of collectionsToCheck){
+      try{
+        const snap = await db.collection(coll).doc(uid).get();
+        const data = snap.exists ? snap.data() : null;
+        fsContainer.appendChild(cardForCollection(coll, data));
+      }catch(e){
+        const errBox = document.createElement('div');
+        errBox.className = 'card';
+        errBox.style.padding = '12px';
+        errBox.innerHTML = `<h3 style="margin:0 0 8px">${coll}</h3>
+          <div class="err">Fehler beim Laden: ${e.message || e}</div>`;
+        fsContainer.appendChild(errBox);
+      }
+    }
+  }
+
+  async function loadAll(){
+    const u = auth.currentUser;
+    if (!u) { location.replace('index.html'); return; }
+
+    // Auth-Infos
+    setKV(uidEl, u.uid);
+    setKV(emailEl, u.email);
+    setKV(verifiedEl, u.emailVerified ? '✓ verifiziert' : '✗ nicht verifiziert');
+    setKV(displayNameEl, u.displayName || '');
+    setKV(providersEl, (u.providerData||[]).map(p=>p.providerId).join(', ') || '–');
+    setKV(createdEl, u.metadata?.creationTime || '');
+    setKV(lastLoginEl, u.metadata?.lastSignInTime || '');
+    setKV(photoURLEl, u.photoURL || '');
+
+    rawAuthEl.textContent = JSON.stringify({
+      uid: u.uid,
+      email: u.email,
+      emailVerified: u.emailVerified,
+      displayName: u.displayName,
+      providerData: (u.providerData||[]).map(p=>({ providerId:p.providerId, uid:p.uid, email:p.email })),
+      metadata: u.metadata,
+      phoneNumber: u.phoneNumber,
+      photoURL: u.photoURL
+    }, null, 2);
+
+    // Firestore-Daten zur UID
+    await loadFirestoreDocs(u.uid);
+  }
+
+  // Events
+  document.getElementById('refreshBtn').onclick = loadAll;
+  document.getElementById('copyUidBtn').onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(uidEl.textContent); }catch(_){}
+  };
+  document.getElementById('copyEmailBtn').onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(emailEl.textContent); }catch(_){}
+  };
+
+  // Auth-Flow
+  auth.onAuthStateChanged(u => { if (!u) location.replace('index.html'); else loadAll(); });
+})();
+</script>
+</body>
+</html>

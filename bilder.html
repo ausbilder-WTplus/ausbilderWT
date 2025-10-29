@@ -21,6 +21,12 @@
       gap:12px;
     }
     .header img { height:80px; width:auto; object-fit:contain; }
+    .header .master-label {
+      flex:1; text-align:center; font-size:48px; font-weight:bold;
+      color:#fff; letter-spacing:4px;
+    }
+    @media (max-width:750px){ .header img{ height:44px; } .header .master-label{ font-size:32px; } }
+    @media (max-width:480px){ .header img{ height:40px; } .header .master-label{ font-size:26px; } }
 
     /* Google Drive Betrachter */
     .viewer {
@@ -53,8 +59,8 @@
   </style>
 </head>
 <body>
-  <!-- Überschrift / Logo -->
-  <div class="header">
+  <!-- Header / Logos -->
+  <div class="header" id="header">
     <img id="logo-left" src="pluslogo.png" alt="Logo links">
     <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
     <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
@@ -73,31 +79,60 @@
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
+  <!-- Zentrale Firebase-Config -->
+  <script src="firebase-config.js"></script>
 
   <script>
-    // Firebase initialisieren
-    if (!firebase.apps.length) {
-      firebase.initializeApp({
-      apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
-    authDomain: "wt-plus-login.firebaseapp.com",
-    databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
-    projectId: "wt-plus-login",
-    storageBucket: "wt-plus-login.firebasestorage.app",
-    messagingSenderId: "775441256129",
-    appId: "1:775441256129:web:64b962f72181248ef04e40"
-      });
-    }
-
+    // ---- Firebase init (zentral) ----
+    firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
+    const db   = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-    // Guard: nur eingeloggte Nutzer
-    auth.onAuthStateChanged((user) => {
+    // ---- Guard: nur eingeloggte Nutzer ----
+    auth.onAuthStateChanged(async (user) => {
       if (!user) {
         location.href = "index.html";
+        return;
+      }
+
+      // ---- Logos nach Schule setzen (inkl. MASTER) ----
+      try {
+        let school = (sessionStorage.getItem('school') || '').toLowerCase();
+        if (!school) {
+          const snap = await db.collection('rollen').doc(user.uid).get();
+          if (snap.exists) {
+            school = (snap.data().school || '').toLowerCase();
+            sessionStorage.setItem('school', school);
+          }
+        }
+
+        const header = document.getElementById('header');
+        const logoLeft = document.getElementById('logo-left');
+        const logoCenter = document.getElementById('logo-center');
+        const logoRight = document.getElementById('logo-right');
+
+        function preloadAndSet(imgEl, url) {
+          const test = new Image();
+          test.onload = () => { imgEl.src = url; };
+          test.onerror = () => {};
+          test.src = url;
+        }
+
+        if (school === 'master') {
+          header.innerHTML = '<div class="master-label">MASTER</div>';
+        } else if (school) {
+          const base = `logos/${school}`;
+          preloadAndSet(logoCenter, `${base}/logo-center.jpg`);
+          preloadAndSet(logoLeft,   `${base}/logo-left.jpg`);
+          preloadAndSet(logoRight,  `${base}/logo-right.jpg`);
+        }
+      } catch (e) {
+        console.error('[Logo/School Fehler]', e);
       }
     });
   </script>
 </body>
 </html>
-

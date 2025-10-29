@@ -27,6 +27,9 @@
       gap:12px;
     }
     .header img { height:54px; object-fit:contain; }
+    .header .master-label{
+      flex:1; text-align:center; font-size:40px; font-weight:bold; letter-spacing:4px;
+    }
 
     /* Iframe Container */
     .iframe-wrap {
@@ -61,16 +64,17 @@
 
     @media (max-width:600px){
       .header img{ height:40px; }
+      .header .master-label{ font-size:28px; }
       iframe { height:500px; }
     }
   </style>
 </head>
 <body>
   <!-- Header -->
-  <div class="header">
-    <img src="pluslogo.png" alt="Logo links">
-    <img src="faust.jpg" alt="Logo Mitte">
-    <img src="melsungen.jpg" alt="Logo rechts">
+  <div class="header" id="header">
+    <img id="logo-left" src="pluslogo.png" alt="Logo links">
+    <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
   </div>
 
   <!-- Iframe mit Ausrüstung -->
@@ -83,12 +87,59 @@
     <img src="home.jpg" alt="Home">
   </button>
 
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
+  <!-- Zentrale Firebase-Config -->
+  <script src="firebase-config.js"></script>
+
   <script>
-    // Nur eingeloggte Nutzer
-    (function guard(){
-      const user = sessionStorage.getItem('loggedInUser');
-      if (!user) location.href = 'index.html';
-    })();
+    // ---- Firebase init (zentral, genau einmal) ----
+    firebase.initializeApp(window.firebaseConfig);
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    // ---- Guard + Schul-Header (Logos / MASTER) ----
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) { location.href = "index.html"; return; }
+
+      try {
+        let school = (sessionStorage.getItem('school') || '').toLowerCase();
+        if (!school) {
+          const snap = await db.collection('rollen').doc(user.uid).get();
+          if (snap.exists) {
+            school = (snap.data().school || '').toLowerCase();
+            sessionStorage.setItem('school', school);
+          }
+        }
+
+        const header = document.getElementById('header');
+        const logoLeft = document.getElementById('logo-left');
+        const logoCenter = document.getElementById('logo-center');
+        const logoRight = document.getElementById('logo-right');
+
+        function preloadAndSet(imgEl, url) {
+          const test = new Image();
+          test.onload = () => { imgEl.src = url; };
+          test.onerror = () => {}; // Fallback: ursprüngliches src bleibt
+          test.src = url;
+        }
+
+        if (school === 'master') {
+          header.innerHTML = '<div class="master-label">MASTER</div>';
+        } else if (school) {
+          const base = `logos/${school}`;
+          preloadAndSet(logoCenter, `${base}/logo-center.jpg`);
+          preloadAndSet(logoLeft,   `${base}/logo-left.jpg`);
+          preloadAndSet(logoRight,  `${base}/logo-right.jpg`);
+        }
+      } catch (e) {
+        console.error('[Header/School]', e);
+      }
+    });
   </script>
 </body>
 </html>

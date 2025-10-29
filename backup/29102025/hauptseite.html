@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WT-Ausbilder</title>
+  <style>
+    :root { --bg:#000; --text:#fff; --accent-bg:#fff; --accent-text:#000; }
+    * { box-sizing:border-box; }
+    html, body { height:100%; }
+    body {
+      margin:0; font-family:Arial, Helvetica, sans-serif;
+      background:var(--bg); color:var(--text);
+      min-height:100vh; display:flex; flex-direction:column;
+      -webkit-font-smoothing:antialiased;
+    }
+
+    #app { display:none; }
+
+    .header{ display:flex; justify-content:space-between; align-items:center; padding:12px 16px; gap:12px; }
+    .header img{ height:80px; width:auto; object-fit:contain; }
+    .master-label{ flex:1; text-align:center; font-size:48px; font-weight:bold; letter-spacing:4px; }
+
+    .center{ display:flex; flex-direction:column; align-items:center; }
+    .menu-btn{
+      background:var(--accent-bg); color:var(--accent-text);
+      border:none; padding:10px 20px; font-size:18px;
+      border-radius:12px; cursor:pointer; margin-top:14px;
+      box-shadow:0 2px 6px rgba(0,0,0,.3);
+    }
+    .quick-actions-row{
+      margin-top:12px; display:flex; flex-wrap:wrap; gap:12px; justify-content:center;
+    }
+    .quick-actions-row button{
+      background:#fff; color:#000; border:none; border-radius:10px;
+      padding:10px 12px; font-weight:bold; cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.35); transition:transform .1s;
+    }
+    .quick-actions-row button:hover{ transform:scale(1.05); }
+
+    .menu-list{ display:none; flex-direction:column; gap:10px; margin-top:12px; }
+    .menu-list button{ background:transparent; color:var(--text); border:1px solid #444; padding:8px 12px; border-radius:8px; cursor:pointer; }
+
+    .ticker{
+      margin:20px auto; width:90%; max-width:900px;
+      overflow:hidden; border-radius:8px; border:1px solid #222;
+      padding:10px; text-align:left; background:rgba(255,255,255,.05);
+    }
+    .ticker-inner{ display:inline-block; white-space:nowrap; padding-left:100%; font-size:16px; }
+    @keyframes scroll{ 0%{transform:translateX(0);} 100%{transform:translateX(-100%);} }
+    .ticker-inner.animate{ animation:scroll linear infinite; animation-duration:12s; }
+
+    .calendar-wrap{ margin:18px auto; width:100%; max-width:1000px; height:520px; display:none; }
+    .calendar-wrap iframe{ width:100%; height:100%; border:none; border-radius:8px; background:#fff; }
+
+    .logout-container{ margin-top:auto; padding:20px; text-align:center; }
+    .logout-btn{
+      background:#ff5555; color:#fff; border:none; border-radius:8px;
+      padding:10px 20px; font-size:16px; font-weight:bold;
+      cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.4);
+    }
+    .logout-btn:hover{ background:#ff3333; }
+
+    .scope-dialog-backdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.55);
+      display:none; align-items:center; justify-content:center; z-index:999;
+    }
+    .scope-dialog{
+      width:92%; max-width:460px; background:#111; color:#fff;
+      border:1px solid #333; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.6);
+      padding:16px;
+    }
+    .scope-dialog h3{ margin:0 0 10px; font-size:20px; }
+    .scope-select{
+      width:100%; background:#000; color:#fff; border:1px solid #333; border-radius:10px; padding:10px 12px;
+    }
+    .scope-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+    .ghost{ background:transparent; color:#fff; border:1px solid #444; border-radius:10px; padding:8px 14px; cursor:pointer; }
+
+    @media (max-width:750px){ .header img{ height:44px; } .master-label{ font-size:32px; } }
+    @media (max-width:480px){
+      .header img{ height:40px; } .calendar-wrap{ height:420px; }
+      .menu-btn{ font-size:16px; padding:8px 14px; } .quick-actions-row button{ font-size:14px; padding:8px; }
+      .master-label{ font-size:26px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="header" id="header">
+      <img id="logo-left" src="pluslogo.png" alt="Logo links">
+      <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+      <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
+    </div>
+
+    <div class="center">
+      <button class="menu-btn" id="menuToggle">Menü</button>
+      <button class="menu-btn" id="chooseSchoolBtn" style="display:none">
+        Schule: <span id="chooseSchoolLabel">MASTER</span>
+      </button>
+
+      <div class="quick-actions-row" id="quickActionsRow">
+        <button id="calendarBtn" data-role="admin">Kalender</button>
+        <button id="oneNoteBtn" data-role="admin,trainer">One Note</button>
+        <button id="templatesBtn" data-role="admin,trainer">Vorlagen</button>
+        <button id="driveBtn" data-role="admin">Drive</button>
+        <button onclick="location.href='passwort-aendern.html'">Passwort ändern</button>
+        <button onclick="location.href='links.html'">Trainingsausrüstung</button>
+        <button onclick="location.href='snackliste.html'">Snackliste</button>
+        <button data-role="admin,si-fu" onclick="location.href='registrierung.html'">Registrierung</button>
+        <button data-role="admin,si-fu" onclick="location.href='einstellungen.html'">Einstellungen</button>
+
+        <!-- NEU: Anwesenheitskontrolle -->
+        <button data-role="admin,si-fu" onclick="location.href='session-admin.html'">Trainingstermin erstellen</button>
+        <button data-role="trainer,admin,si-fu" onclick="location.href='attend.html'">Ausbilder-Check-in</button>
+      </div>
+
+      <div id="menuList" class="menu-list">
+        <button onclick="location.href='ausbilderunterlagen.html'">Ausbilderunterlagen</button>
+        <button onclick="location.href='spiele.html'">Spiele</button>
+        <button onclick="location.href='bilder.html'">Bilder</button>
+        <button onclick="location.href='videos.html'">Videos</button>
+        <button onclick="location.href='schuluebersicht.html'">Schulübersicht</button>
+        <button onclick="location.href='anleitungen.html'">Anleitungen</button>
+        <button onclick="location.href='trainingszeiten.html'">Trainingszeiten</button>
+        <button onclick="location.href='checkliste.html'">Checkliste</button>
+      </div>
+
+      <div style="margin-top:8px; font-size:14px; color:#ddd;">Newsticker</div>
+    </div>
+
+    <div class="ticker"><div id="tickerInner" class="ticker-inner">Lade Newsticker…</div></div>
+
+    <!-- Kalender: erst sichtbar, wenn eine konkrete Schule gewählt wurde -->
+    <div class="calendar-wrap" id="calendarWrap">
+      <iframe id="calendarFrame" src="about:blank" title="Trainingskalender"></iframe>
+    </div>
+
+    <div class="logout-container">
+      <button class="logout-btn" id="logoutBtn">Logout</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script>
+    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+    const auth=firebase.auth(); const db=firebase.firestore();
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    const app=document.getElementById('app'), toggle=document.getElementById('menuToggle');
+    const menu=document.getElementById('menuList'), logoutBtn=document.getElementById('logoutBtn');
+    const chooseBtn=document.getElementById('chooseSchoolBtn'), chooseLbl=document.getElementById('chooseSchoolLabel');
+    const scopeRow=document.getElementById('quickActionsRow'), headerEl=document.getElementById('header');
+    const calWrap=document.getElementById('calendarWrap'), calFrame=document.getElementById('calendarFrame');
+
+    toggle.onclick=()=>{const v=menu.style.display==='flex';menu.style.display=v?'none':'flex';};
+    logoutBtn.onclick=async()=>{await auth.signOut();sessionStorage.clear();location.href='index.html';};
+
+    function preloadAndSet(imgEl,u){const t=new Image();t.onload=()=>imgEl.src=u;t.src=u;}
+    function applyHeaderBySchool(school){
+      const s=(school||'').toLowerCase();
+      if(!document.getElementById('logo-left')){
+        headerEl.innerHTML=`<img id="logo-left" src="pluslogo.png" alt="Logo links">
+                             <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+                             <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">`;
+      }
+      if(!s||s==='master'){headerEl.innerHTML='<div class="master-label">MASTER</div>';return;}
+      const base=`logos/${s}`;preloadAndSet(document.getElementById('logo-left'),`${base}/logo-left.jpg`);
+      preloadAndSet(document.getElementById('logo-center'),`${base}/logo-center.jpg`);
+      preloadAndSet(document.getElementById('logo-right'),`${base}/logo-right.jpg`);
+    }
+
+    const normalize=r=>{
+      r=(r||'').toLowerCase();
+      if(['administrator','admins','adminstrator'].includes(r))r='admin';
+      if(['trainer/in','trainerin','coach'].includes(r))r='trainer';
+      if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r))r='si-fu';
+      return r;
+    };
+
+    function splitSchoolsString(str){ if(!str) return []; return String(str).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean); }
+
+    // Schulen-Liste laden (case-flexibel)
+    async function loadAccessibleSchools(key){
+      const tries = [key, key?.toUpperCase(), key?.charAt(0)?.toUpperCase()+key?.slice(1)?.toLowerCase(), key?.toLowerCase()]
+        .filter(Boolean);
+      const seen = new Set();
+      for (const k of tries){
+        if (seen.has(k)) continue; seen.add(k);
+        try{
+          const snap = await db.collection('Schulen').doc(k).get();
+          if (snap.exists){
+            const d = snap.data()||{};
+            if (Array.isArray(d.School)) return d.School.map(String).map(s=>s.trim()).filter(Boolean);
+            if (typeof d.School === 'string') return splitSchoolsString(d.School);
+            if (Array.isArray(d.schools)) return d.schools.map(String).map(s=>s.trim()).filter(Boolean);
+            if (typeof d.schools === 'string') return splitSchoolsString(d.schools);
+            return [];
+          }
+        }catch(e){ console.warn('loadAccessibleSchools error for', k, e); }
+      }
+      return [];
+    }
+
+    // Rollen-Buttons
+    function enableRoleButtons(role){
+      if (!scopeRow) return;
+      scopeRow.querySelectorAll('[data-role]').forEach(b => b.style.display='none');
+      const show = sel => scopeRow.querySelectorAll(sel).forEach(b => b.style.display='inline-block');
+      if (role === 'admin') { show('[data-role*="admin"]'); show('[data-role*="trainer"]'); show('[data-role*="si-fu"]'); }
+      else if (role === 'si-fu') { show('[data-role*="si-fu"]'); }
+      else if (role === 'trainer') { show('[data-role*="trainer"]'); }
+    }
+
+    /* =========================
+       Case-flexible Firestore: Utils
+       ========================= */
+    async function getDocFlexible(collectionName, key){
+      const base = (key ?? '').toString().trim();
+      const tries = [
+        base,
+        base.toUpperCase(),
+        base.charAt(0).toUpperCase() + base.slice(1).toLowerCase(),
+        base.toLowerCase()
+      ].filter(Boolean);
+      const unique = [...new Set(tries)];
+      for (const id of unique){
+        try{
+          const snap = await db.collection(collectionName).doc(id).get();
+          if (snap.exists) return { snap, id };
+        }catch(e){
+          console.warn(`Fehler beim Lesen von ${collectionName}/${id}:`, e);
+        }
+      }
+      return null;
+    }
+
+    /* =========================
+       Button-/Link-Loader
+       ========================= */
+
+    // OneNote: onenote / OneNote / OneNoteURL
+    async function setOneNoteLinkForSchool(schoolName){
+      const oneNoteBtn = document.getElementById('oneNoteBtn');
+      try {
+        const key = (schoolName && String(schoolName).trim()) || 'MASTER';
+        const res = await getDocFlexible('links', key);
+        if (res) {
+          const data = res.snap.data() || {};
+          const url = data.onenote || data.OneNote || data.OneNoteURL;
+          if (url) { oneNoteBtn.onclick = () => window.open(url, '_blank'); return; }
+        }
+        oneNoteBtn.onclick = () => alert('Kein OneNote-Link für diese Schule hinterlegt.');
+      } catch (e) {
+        console.error('Fehler beim Laden des OneNote-Links:', e);
+        oneNoteBtn.onclick = () => alert('Fehler beim Laden des OneNote-Links.');
+      }
+    }
+
+    // Kalender-Button: adminkalender
+    async function setCalendarButtonLinkForSchool(schoolName){
+      const btn = document.getElementById('calendarBtn');
+      try{
+        const key = (schoolName && String(schoolName).trim()) || 'MASTER';
+        const res = await getDocFlexible('links', key);
+        if (res){
+          const data = res.snap.data() || {};
+          const url = data.adminkalender; // exakt dieses Feld
+          if (url){ btn.onclick = () => window.open(url, '_blank'); return; }
+        }
+        btn.onclick = () => alert('Kein Kalender-Link (adminkalender) für diese Schule hinterlegt.');
+      }catch(e){
+        console.error('Fehler beim Laden des Kalender-Buttons:', e);
+        btn.onclick = () => alert('Fehler beim Laden des Kalender-Links.');
+      }
+    }
+
+    // Vorlagen-Button: vorlagen
+    async function setTemplatesButtonLinkForSchool(schoolName){
+      const btn = document.getElementById('templatesBtn');
+      try{
+        const key = (schoolName && String(schoolName).trim()) || 'MASTER';
+        const res = await getDocFlexible('links', key);
+        if (res){
+          const data = res.snap.data() || {};
+          const url = data.vorlagen; // exakt dieses Feld
+          if (url){ btn.onclick = () => window.open(url, '_blank'); return; }
+        }
+        btn.onclick = () => alert('Kein Vorlagen-Link (vorlagen) für diese Schule hinterlegt.');
+      }catch(e){
+        console.error('Fehler beim Laden des Vorlagen-Links:', e);
+        btn.onclick = () => alert('Fehler beim Laden des Vorlagen-Links.');
+      }
+    }
+
+    // Drive-Button: drive
+    async function setDriveButtonLinkForSchool(schoolName){
+      const btn = document.getElementById('driveBtn');
+      try{
+        const key = (schoolName && String(schoolName).trim()) || 'MASTER';
+        const res = await getDocFlexible('links', key);
+        if (res){
+          const data = res.snap.data() || {};
+          const url = data.drive; // exakt dieses Feld
+          if (url){ btn.onclick = () => window.open(url, '_blank'); return; }
+        }
+        btn.onclick = () => alert('Kein Drive-Link (drive) für diese Schule hinterlegt.');
+      }catch(e){
+        console.error('Fehler beim Laden des Drive-Links:', e);
+        btn.onclick = () => alert('Fehler beim Laden des Drive-Links.');
+      }
+    }
+
+    // iFrame-Trainingskalender (bei konkreter Schule)
+    async function setCalendarForSchool(schoolName){
+      const name = (schoolName || '').toString().trim();
+      if (!name || name.toUpperCase() === 'MASTER') {
+        calFrame.src = 'about:blank';
+        calWrap.style.display = 'none';
+        return;
+      }
+      try {
+        const res = await getDocFlexible('links', name);
+        if (res) {
+          const data = res.snap.data() || {};
+          const calUrl =
+            data.trainingskalender ||
+            data.trainingsKalender ||
+            data.kalender ||
+            data.calendarUrl ||
+            data.calendarURL;
+
+          if (calUrl) {
+            calFrame.src = calUrl;
+            calWrap.style.display = 'block';
+            return;
+          }
+        }
+        calFrame.src = 'about:blank';
+        calWrap.style.display = 'none';
+      } catch (e) {
+        console.error('Fehler beim Laden des Trainingskalenders:', e);
+        calFrame.src = 'about:blank';
+        calWrap.style.display = 'none';
+      }
+    }
+
+    /* =========================
+       Auth & Initialisierung
+       ========================= */
+    auth.onAuthStateChanged(async user=>{
+      if(!user){location.replace('index.html');return;}
+      app.style.display='block';
+
+      let role=normalize(sessionStorage.getItem('role')),school=(sessionStorage.getItem('school')||'').trim();
+      if(!role||!school){
+        const p=await db.collection('rollen').doc(user.uid).get();
+        if(p.exists){
+          const d=p.data(); role=normalize(d.role); school=(d.school||'').trim();
+          sessionStorage.setItem('role',role); sessionStorage.setItem('school',school);
+          sessionStorage.setItem('loggedInUser', user.email || '');
+        }
+      }
+      enableRoleButtons(role);
+
+      // aktive Ansicht
+      let active=(sessionStorage.getItem('activeSchool')||school||'MASTER').trim();
+
+      // Sichtbarkeit & Inhalt des Auswahl-Buttons bestimmen
+      const schoolUpper = (school||'').toUpperCase();
+      let list = [];
+
+      if (schoolUpper === 'MASTER') {
+        list = await loadAccessibleSchools('MASTER');
+        chooseBtn.style.display = 'inline-block';
+      } else {
+        list = await loadAccessibleSchools(school);
+        if (list.length > 0) {
+          chooseBtn.style.display = 'inline-block';
+          if (!active || active.toLowerCase() === school.toLowerCase()) {
+            active = list[0] || active;
+            sessionStorage.setItem('activeSchool', (active||'').toLowerCase());
+          }
+        } else {
+          chooseBtn.style.display = 'none';
+          active = school;
+        }
+      }
+
+      // Label + Header anwenden
+      chooseLbl.textContent = (String(active).toUpperCase()==='MASTER' ? 'MASTER' : active);
+      applyHeaderBySchool(active);
+
+      // Initial: Buttons & iFrame setzen
+      await setOneNoteLinkForSchool(active);
+      await setCalendarButtonLinkForSchool(active);  // adminkalender
+      await setTemplatesButtonLinkForSchool(active); // vorlagen
+      await setDriveButtonLinkForSchool(active);     // drive
+      await setCalendarForSchool(active);            // iFrame
+
+      // Dialog öffnen
+      chooseBtn.onclick = () => {
+        const dlg=document.getElementById('chooseSchoolDlg');
+        const sel=document.getElementById('schoolSelect');
+        sel.innerHTML = '';
+
+        if (schoolUpper === 'MASTER') {
+          const masterOpt = document.createElement('option');
+          masterOpt.value = 'MASTER'; masterOpt.textContent = 'MASTER (alle)';
+          sel.appendChild(masterOpt);
+        }
+        list.forEach(n=>{
+          const o=document.createElement('option');
+          o.value=n; o.textContent=n; sel.appendChild(o);
+        });
+
+        const want = (sessionStorage.getItem('activeSchool') || active || (schoolUpper==='MASTER'?'MASTER':'')) || '';
+        sel.value = (want.toUpperCase()==='MASTER') ? 'MASTER' : want;
+
+        dlg.style.display='flex';
+      };
+    });
+
+    // Dialog-Buttons
+    document.addEventListener('click',async e=>{
+      const b=e.target.closest('button'); if(!b) return;
+      if(b.id==='dlgCancel'){ document.getElementById('chooseSchoolDlg').style.display='none'; }
+      if(b.id==='dlgApply'){
+        const sel=document.getElementById('schoolSelect');
+        const val = sel.value || 'MASTER';
+        sessionStorage.setItem('activeSchool', val.toLowerCase());
+        chooseLbl.textContent = (val.toUpperCase()==='MASTER' ? 'MASTER' : val);
+        applyHeaderBySchool(val);
+        document.getElementById('chooseSchoolDlg').style.display='none';
+
+        // Beim Wechsel: Buttons & iFrame aktualisieren
+        await setOneNoteLinkForSchool(val);
+        await setCalendarButtonLinkForSchool(val);   // adminkalender
+        await setTemplatesButtonLinkForSchool(val);  // vorlagen
+        await setDriveButtonLinkForSchool(val);      // drive
+        await setCalendarForSchool(val);             // iFrame
+
+        console.log('Schule übernommen:', val);
+      }
+    });
+
+    // Newsticker
+    const csvUrl="https://docs.google.com/spreadsheets/d/e/2PACX-1vTqv9vVFE1kHZdb48JLBpUd3uwsin78PVjCLEGDmUztI78RYSPstjAxUi0uuwV-34fe91G4SfuQHGsl/pub?output=csv";
+    (async()=>{try{
+      const r=await fetch(csvUrl); const t=await r.text();
+      const first=t.trim().split(/\r?\n/)[0]||'Keine Daten gefunden';
+      const el=document.getElementById('tickerInner');
+      el.textContent=first; const d=Math.min(Math.max(first.length/6,8),30);
+      el.classList.add('animate'); el.style.animationDuration=d+'s';
+    }catch(e){ document.getElementById('tickerInner').textContent='Fehler beim Laden'; }})();
+  </script>
+
+  <!-- Dialog -->
+  <div class="scope-dialog-backdrop" id="chooseSchoolDlg">
+    <div class="scope-dialog" role="dialog" aria-modal="true" aria-labelledby="scopeTitle">
+      <h3 id="scopeTitle">Schule wählen</h3>
+      <select id="schoolSelect" class="scope-select">
+        <!-- Optionen werden dynamisch befüllt -->
+      </select>
+      <div class="scope-actions">
+        <button id="dlgCancel" class="ghost">Abbrechen</button>
+        <button id="dlgApply" class="menu-btn">Übernehmen</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -35,7 +35,7 @@
     }
     .placeholder{ color:#777; font-style:italic; }
 
-    /* Mobil: What & Time oben, Trainer darunter im Grid */
+    /* Mobil */
     @media (max-width:980px){
       .slot{ grid-template-columns: 1fr 120px; grid-auto-rows:auto; align-items:start; }
       .what{ grid-column:1 / 2; }
@@ -45,12 +45,8 @@
         display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:8px;
       }
     }
-    @media (max-width:620px){
-      .names{ grid-template-columns:repeat(2, 1fr); }
-    }
-    @media (max-width:420px){
-      .names{ grid-template-columns:1fr; }
-    }
+    @media (max-width:620px){ .names{ grid-template-columns:repeat(2, 1fr); } }
+    @media (max-width:420px){ .names{ grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -64,26 +60,20 @@
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 
+  <!-- Zentrale Firebase-Config -->
+  <script src="firebase-config.js"></script>
+
   <script>
-    // ---------- Firebase Init ----------
+    // ---------- Firebase Init (zentral) ----------
     if (!firebase.apps.length) {
-      firebase.initializeApp({
-        apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
-        authDomain: "wt-plus-login.firebaseapp.com",
-        databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
-        projectId: "wt-plus-login",
-        storageBucket: "wt-plus-login.firebasestorage.app",
-        messagingSenderId: "775441256129",
-        appId: "1:775441256129:web:64b962f72181248ef04e40"
-      });
+      firebase.initializeApp(window.firebaseConfig);
     }
     const db = firebase.firestore();
 
     // ---------- Aufbau ----------
-    // Pro Zeitfenster auch "what" (Beschreibung)
     const SLOTS = [
       { day: "Montag", slots: [
-      { time: "17:30-18:15", what: "Jugendliche 8-12 Jahre" },
+        { time: "17:30-18:15", what: "Jugendliche 8-12 Jahre" },
         { time: "19:30-21:00", what: "Erwachsene ab 13 Jahre" },
       ]},
       { day: "Mittwoch", slots: [
@@ -99,7 +89,10 @@
       ]},
     ];
 
-    const slug = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
+    const slug = s => s.toLowerCase().normalize("NFD")
+      .replace(/[\u0300-\u036f]/g,"")
+      .replace(/[^a-z0-9]+/g,"-")
+      .replace(/^-+|-+$/g,"");
 
     const root = document.getElementById('schedule');
     const statusEl = document.getElementById('status');
@@ -118,7 +111,7 @@
           const row=document.createElement('div');
           row.className='slot';
           row.setAttribute('data-day', group.day);
-          row.setAttribute('data-time', slot.time); // stabil für IDs
+          row.setAttribute('data-time', slot.time);
           row.innerHTML=`
             <div class="what">${slot.what || ""}</div>
             <div class="time">${slot.time}</div>
@@ -136,7 +129,6 @@
       }
     }
 
-    // Füllt auf 6 Einträge auf (Kompatibilität mit alten 3er-Arrays)
     function pad6(arr){
       const out = Array.isArray(arr) ? arr.slice(0,6) : [];
       while(out.length<6) out.push("");
@@ -164,7 +156,6 @@
       });
     }
 
-    // Initiales Layout
     renderSkeleton();
 
     // Live-Listener

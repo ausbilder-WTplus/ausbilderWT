@@ -20,7 +20,10 @@
       padding:12px 16px; gap:12px;
     }
     .header img{ height:64px; width:auto; object-fit:contain; }
-    @media (max-width:750px){ .header img{ height:44px; } }
+    .header .master-label{
+      flex:1; text-align:center; font-size:42px; font-weight:bold; letter-spacing:4px;
+    }
+    @media (max-width:750px){ .header img{ height:44px; } .header .master-label{ font-size:30px; } }
 
     /* Inhalt */
     .wrap{
@@ -89,10 +92,10 @@
 </head>
 <body>
   <!-- Header -->
-  <div class="header">
-    <img src="pluslogo.png" alt="WT Plus Logo">
-    <img src="faust.jpg" alt="Mitte Logo">
-    <img src="melsungen.jpg" alt="EWTO Schule Melsungen Logo">
+  <div class="header" id="header">
+    <img id="logo-left" src="pluslogo.png" alt="WT Plus Logo">
+    <img id="logo-center" src="faust.jpg" alt="Mitte Logo">
+    <img id="logo-right" src="melsungen.jpg" alt="EWTO Schule Melsungen Logo">
   </div>
 
   <!-- Inhalt -->
@@ -115,26 +118,59 @@
     <img src="home.jpg" alt="Home">
   </button>
 
-  <!-- Firebase (Login-Guard) -->
+  <!-- Firebase (Auth-Guard) -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
+  <!-- Zentrale Config -->
+  <script src="firebase-config.js"></script>
 
   <script>
-    // ---- Firebase Guard (an dein Projekt angepasst)
-    if (!firebase.apps.length) {
-      firebase.initializeApp({
-        apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
-        authDomain: "wt-plus-login.firebaseapp.com",
-        databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
-        projectId: "wt-plus-login",
-        storageBucket: "wt-plus-login.firebasestorage.app",
-        messagingSenderId: "775441256129",
-        appId: "1:775441256129:web:64b962f72181248ef04e40"
-      });
-    }
+    // ---- Firebase init (zentral, genau einmal) ----
+    firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
+    const db   = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-    auth.onAuthStateChanged(u => { if (!u) location.href = "index.html"; });
+
+    // ---- Guard + Schul-Header (Logos / MASTER) ----
+    auth.onAuthStateChanged(async (u) => {
+      if (!u) { location.href = "index.html"; return; }
+
+      try {
+        let school = (sessionStorage.getItem('school') || '').toLowerCase();
+        if (!school) {
+          const snap = await db.collection('rollen').doc(u.uid).get();
+          if (snap.exists) {
+            school = (snap.data().school || '').toLowerCase();
+            sessionStorage.setItem('school', school);
+          }
+        }
+
+        const header = document.getElementById('header');
+        const logoLeft = document.getElementById('logo-left');
+        const logoCenter = document.getElementById('logo-center');
+        const logoRight = document.getElementById('logo-right');
+
+        function preloadAndSet(imgEl, url) {
+          const test = new Image();
+          test.onload = () => { imgEl.src = url; };
+          test.onerror = () => {}; // Fallback: ursprüngliches src bleibt
+          test.src = url;
+        }
+
+        if (school === 'master') {
+          header.innerHTML = '<div class="master-label">MASTER</div>';
+        } else if (school) {
+          const base = `logos/${school}`;
+          preloadAndSet(logoCenter, `${base}/logo-center.jpg`);
+          preloadAndSet(logoLeft,   `${base}/logo-left.jpg`);
+          preloadAndSet(logoRight,  `${base}/logo-right.jpg`);
+        }
+      } catch (e) {
+        console.error('[Header/School]', e);
+      }
+    });
 
     // ---- Checklisten-Daten
     const DAILY = [
@@ -143,26 +179,25 @@
       { id: "bonbonglas",        label: "Bonbonglas auffüllen" },
       { id: "licht",             label: "Licht aus" },
       { id: "tuer",              label: "Tür abschließen" },
-      { id: "Heizung",           label: "Heizung ein- und wieder ausschalten" },
+      { id: "heizung",           label: "Heizung ein- und wieder ausschalten" },
     ];
     const WEEKLY = [
-      { id: "blumen",      label: "Blumen gießen" },
-      { id: "staubwischen",label: "Staub wischen" },   // (Schreibweise korrigiert)
-      { id: "bad",         label: "Bad reinigen" },
+      { id: "blumen",       label: "Blumen gießen" },
+      { id: "staubwischen", label: "Staub wischen" },
+      { id: "bad",          label: "Bad reinigen" },
     ];
 
-    // ---- Speicher-Keys
+    // ---- Speicher-Keys (LocalStorage)
     const LS_DAILY  = "checklist:daily";
     const LS_WEEKLY = "checklist:weekly";
 
-    // Hilfen für Reset
+    // Reset-Scopes
     function todayKey() {
       const d = new Date();
       return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
     }
     function weekKey() {
       const d = new Date();
-      // ISO Week
       const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
       const dayNum = (date.getUTCDay() || 7);
       date.setUTCDate(date.getUTCDate() + 4 - dayNum);

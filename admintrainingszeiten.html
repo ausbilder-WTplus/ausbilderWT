@@ -53,13 +53,9 @@
 
     /* Responsive */
     @media (max-width:1100px){
-      .slot{
-        grid-template-columns: 1fr; align-items:start;
-      }
+      .slot{ grid-template-columns: 1fr; align-items:start; }
       .label{ grid-column:1 / -1; white-space:normal; }
-      .field{
-        grid-column:1 / -1; display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;
-      }
+      .field{ grid-column:1 / -1; display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
       .status{ grid-column:1 / -1; }
     }
     @media (max-width:600px){
@@ -94,25 +90,17 @@
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 
+  <!-- Zentrale Firebase-Config -->
+  <script src="firebase-config.js"></script>
+
   <script>
-    // ---------- Firebase Init ----------
-    if (!firebase.apps.length) {
-      firebase.initializeApp({
-        apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
-        authDomain: "wt-plus-login.firebaseapp.com",
-        databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com",
-        projectId: "wt-plus-login",
-        storageBucket: "wt-plus-login.firebasestorage.app",
-        messagingSenderId: "775441256129",
-        appId: "1:775441256129:web:64b962f72181248ef04e40"
-      });
-    }
+    // ---------- Firebase Init (zentral, genau einmal) ----------
+    firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
     // ---------- Datenmodell ----------
-    // Jetzt mit "what" pro Zeitfenster
     const SLOTS = [
       { day: "Montag", slots: [
         { time: "17:30-18:15", what: "Jugendliche 8-12 Jahre" },
@@ -200,7 +188,6 @@
       }catch(e){console.error(e);return{};}
     }
 
-    // Hilfsfunktion: auf 6 Einträge auffüllen
     function pad6(arr){
       const out = Array.isArray(arr) ? arr.slice(0,6) : [];
       while(out.length<6) out.push("");
@@ -216,7 +203,6 @@
     }
 
     async function doSave(){
-      // Alle Inputs einsammeln → Map slotId -> Array(6)
       const data={};
       document.querySelectorAll('input.name').forEach(inp=>{
         const sid=inp.dataset.slotId;

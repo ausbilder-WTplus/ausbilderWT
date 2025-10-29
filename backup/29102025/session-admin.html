@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Trainingstermine – Admin</title>
+  <style>
+    :root { --bg:#000; --card:#111; --border:#333; --text:#fff; --muted:#bbb;
+            --ok:#4ade80; --warn:#facc15; --err:#f87171; }
+    * { box-sizing: border-box; }
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;}
+    .wrap{max-width:1100px;margin:0 auto;padding:16px;}
+    h1{margin:12px 0 8px;}
+    .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--muted)}
+
+    .grid{display:grid;grid-template-columns: 1.1fr 1.4fr; gap:16px;}
+    @media (max-width: 960px){ .grid{grid-template-columns:1fr} }
+
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;}
+    label{display:block;margin:8px 0 4px}
+    input,select{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:#000;color:var(--text)}
+    button{background:#fff;color:#000;border:none;border-radius:10px;padding:10px 14px;font-weight:bold;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+    button[disabled]{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row>div{flex:1;min-width:200px}
+    .pill{display:inline-flex;gap:6px;align-items:center;padding:8px 12px;border:1px solid var(--border);border-radius:999px;font-size:14px;color:var(--text);background:#0b0b0b}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;}
+
+    /* QR-Fenster: weißer Kasten auf schwarzer Seite */
+    .qr-wrap{display:flex;flex-direction:column;gap:8px;align-items:center}
+    #qr{background:#fff;border:1px dashed var(--border);border-radius:12px;padding:16px;display:inline-block}
+    #qr canvas,#qr img{background:#fff;border-radius:0;display:block;image-rendering:pixelated}
+    #qrPayload{color:var(--muted);font-size:12px;word-break:break-all;text-align:center}
+
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{padding:8px;border-bottom:1px solid #222;text-align:left}
+    tr.sel{background:#0e0e0e}
+    .muted{color:var(--muted)}
+    .status{margin-left:8px;font-size:14px}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <h1>Trainingstermine – Verwaltung</h1>
+    <div class="badge">Rolle: <span id="roleText">–</span></div>
+  </div>
+
+  <div class="grid">
+    <!-- Linke Spalte: Anlegen + Liste -->
+    <div class="card">
+      <h3 style="margin:0 0 8px">Neuen Termin anlegen</h3>
+      <div class="row">
+        <div>
+          <label for="dt">Datum & Uhrzeit</label>
+          <input type="datetime-local" id="dt" required>
+        </div>
+        <div>
+          <label>Schule (vorgewählt)</label>
+          <!-- Nicht editierbar: zeigen als Pill + hidden input -->
+          <div id="schoolPill" class="pill">–</div>
+          <input type="hidden" id="school">
+        </div>
+      </div>
+      <label for="topic">Thema</label>
+      <input type="text" id="topic" placeholder="z.B. Lat Sao – Konterserien" required>
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button id="createBtn">Termin anlegen</button>
+        <span id="status" class="status muted">Bereit</span>
+      </div>
+
+      <hr style="border-color:#222;margin:16px 0">
+
+      <h3 style="margin:0 0 8px">Bestehende Termine</h3>
+      <!-- Filter: Schule fix aus Hauptseite, nicht editierbar -->
+      <div class="row" style="align-items:center">
+        <div>
+          <label>Schule</label>
+          <div id="listSchoolPill" class="pill">–</div>
+        </div>
+        <div>
+          <label for="filterRange">Zeitraum</label>
+          <select id="filterRange">
+            <option value="upcoming">Kommende</option>
+            <option value="past">Vergangene</option>
+            <option value="all">Alle</option>
+          </select>
+        </div>
+        <div style="min-width:120px">
+          <button id="reloadBtn" class="ghost">Aktualisieren</button>
+        </div>
+      </div>
+
+      <table aria-label="Terminliste">
+        <thead>
+          <tr><th>Datum</th><th>Thema</th><th>Schule</th><th>Status</th></tr>
+        </thead>
+        <tbody id="sessionsTbody"></tbody>
+      </table>
+      <div class="muted" id="listInfo" style="margin-top:6px">0 Termine</div>
+    </div>
+
+    <!-- Rechte Spalte: Aktionen + QR + Live-Checkins -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="pill">Ausgewählte ID: <span id="sidLabel" class="mono">–</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="openBtn" class="ghost" disabled>Check-in öffnen</button>
+          <button id="closeBtn" class="ghost" disabled>Check-in schließen</button>
+          <button id="showQrBtn" class="ghost" disabled>QR anzeigen</button>
+          <button id="deleteBtn" style="background:#f33;color:#fff" disabled>Löschen</button>
+        </div>
+      </div>
+
+      <div class="qr-wrap" style="margin-top:12px">
+        <div id="qr">(kein aktiver Check-in)</div>
+        <div id="qrPayload" class="muted"></div>
+      </div>
+
+      <hr style="border-color:#222;margin:16px 0">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0">Anwesenheiten (Live)</h3>
+        <div id="count" class="muted">0 Teilnehmende</div>
+      </div>
+      <table aria-label="Anwesenheitsliste">
+        <thead><tr><th>Name</th><th>E-Mail</th><th>Uhrzeit</th></tr></thead>
+        <tbody id="list"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="attendance-shared.js"></script>
+
+<!-- QRCode Loader: lokal -> CDN Fallback -->
+<script>
+async function ensureQRCodeLoaded(){
+  if (window.QRCode && typeof QRCode.prototype.makeCode === 'function') return;
+  const sources = [
+    './vendor/qrcode/qrcode.min.js',
+    'https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@master/qrcode.min.js'
+  ];
+  let lastErr=null;
+  for (const src of sources){
+    try{
+      await new Promise((res,rej)=>{
+        const s=document.createElement('script');
+        s.src=src; s.async=true;
+        s.onload=res; s.onerror=()=>rej(new Error('Script load error: '+src));
+        document.head.appendChild(s);
+      });
+      if (window.QRCode && typeof QRCode.prototype.makeCode === 'function') return;
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr || new Error('QRCode-Bibliothek konnte nicht geladen werden.');
+}
+</script>
+
+<script>
+(async function(){
+  const {auth,db,newNonce,buildQrPayload,getUserRole} = window._att || {};
+  if (!auth || !db) { alert('Firebase nicht initialisiert.'); location.replace('index.html'); return; }
+  await new Promise(r => auth.onAuthStateChanged(u => { if(!u){ alert('Nicht eingeloggt.'); location.replace('index.html'); } else r(); }));
+
+  // QR-Lib laden
+  try { await ensureQRCodeLoaded(); }
+  catch(e){ console.error(e); alert('QR-Code Bibliothek fehlt (vendor/qrcode/qrcode.min.js).'); return; }
+
+  // --- aktive Schule aus Hauptseite holen (zwingend) ---
+  const ACTIVE_SCHOOL = ((sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '') + '').trim().toUpperCase();
+  if (!ACTIVE_SCHOOL) {
+    alert('Keine Schule ausgewählt. Bitte zuerst auf der Hauptseite die Schule wählen.');
+    location.replace('hauptseite.html'); // ggf. Pfad anpassen
+    return;
+  }
+
+  // DOM
+  const roleEl = document.getElementById('roleText');
+  const statusEl = document.getElementById('status');
+
+  const dt = document.getElementById('dt');
+  const topic = document.getElementById('topic');
+  const schoolHidden = document.getElementById('school');
+  const schoolPill = document.getElementById('schoolPill');
+  const listSchoolPill = document.getElementById('listSchoolPill');
+
+  const createBtn = document.getElementById('createBtn');
+
+  const filterRange  = document.getElementById('filterRange');
+  const reloadBtn    = document.getElementById('reloadBtn');
+  const sessionsTbody= document.getElementById('sessionsTbody');
+  const listInfo     = document.getElementById('listInfo');
+
+  const sidLabel   = document.getElementById('sidLabel');
+  const openBtn    = document.getElementById('openBtn');
+  const closeBtn   = document.getElementById('closeBtn');
+  const showQrBtn  = document.getElementById('showQrBtn');
+  const deleteBtn  = document.getElementById('deleteBtn');
+
+  const qrBox      = document.getElementById('qr');
+  const qrPayloadEl= document.getElementById('qrPayload');
+
+  const list       = document.getElementById('list');
+  const count      = document.getElementById('count');
+
+  // Rolle prüfen
+  let role = await getUserRole();
+  roleEl.textContent = role || '(keine Rolle gefunden)';
+  if (!['admin','si-fu'].includes(role)) { alert('Keine Berechtigung.'); location.replace('index.html'); return; }
+
+  // Schule fix ins UI setzen (nicht editierbar)
+  schoolHidden.value = ACTIVE_SCHOOL;
+  schoolPill.textContent = ACTIVE_SCHOOL;
+  listSchoolPill.textContent = ACTIVE_SCHOOL;
+
+  function setStatus(text, cls){ statusEl.className = 'status ' + (cls || 'muted'); statusEl.textContent = text; }
+
+  // Live-Liste der Checkins pro Session
+  let unsubscribeCheckins = null;
+  function attachLiveList(sid){
+    if (unsubscribeCheckins) try{unsubscribeCheckins();}catch(e){}
+    if (!sid){ list.innerHTML=''; count.textContent='0 Teilnehmende'; return; }
+    unsubscribeCheckins = db.collection('sessions').doc(sid).collection('checkins')
+      .orderBy('checkedAt','desc')
+      .onSnapshot(snap=>{
+        list.innerHTML = ''; let c = 0;
+        snap.forEach(doc=>{
+          const d = doc.data(); c++;
+          const tr = document.createElement('tr');
+          const ts = d.checkedAt?.toDate?.();
+          tr.innerHTML = `<td>${d.displayName || '–'}</td><td>${d.email || ''}</td><td>${ts ? ts.toLocaleString() : ''}</td>`;
+          list.appendChild(tr);
+        });
+        count.textContent = `${c} Teilnehmende`;
+      }, err=>{
+        console.error('Live-Liste Fehler:', err);
+        setStatus('Live-Liste konnte nicht geladen werden.', 'err');
+      });
+  }
+
+  // QR rendern – weißes Fenster, keine Overlays
+  function renderQR(text){
+    qrBox.innerHTML = '';
+    const SIZE = 320;
+    new QRCode(qrBox, { text, width: SIZE, height: SIZE, correctLevel: QRCode.CorrectLevel.M });
+    const cvs = qrBox.querySelector('canvas');
+    const img = qrBox.querySelector('img');
+    const el = cvs || img;
+    if (el) {
+      el.style.width = SIZE + 'px';
+      el.style.height = SIZE + 'px';
+      el.style.imageRendering = 'pixelated';
+      if (cvs) cvs.getContext('2d').imageSmoothingEnabled = false;
+    }
+    qrPayloadEl.textContent = 'Payload: ' + text;
+  }
+
+  // --- Termine anlegen (Schule = ACTIVE_SCHOOL, nicht änderbar) ---
+  createBtn.onclick = async () => {
+    if (!dt.value || !topic.value) { alert('Bitte Datum/Uhrzeit und Thema eingeben.'); return; }
+    createBtn.disabled = true; setStatus('Termin wird angelegt…','warn');
+    try{
+      const when = new Date(dt.value);
+      const u = auth.currentUser;
+      const docRef = await db.collection('sessions').add({
+        createdBy: u.uid,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        date: firebase.firestore.Timestamp.fromDate(when),
+        topic: topic.value.trim(),
+        school: ACTIVE_SCHOOL,   // <- fix
+        open: false,
+        qrNonce: ''
+      });
+      setStatus(`Termin angelegt (ID: ${docRef.id})`, 'ok');
+      await loadSessions();
+      selectRowById(docRef.id);
+    }catch(e){
+      console.error('Fehler beim Anlegen:', e);
+      alert('Termin konnte nicht angelegt werden.\n\n' + (e.message || e.code || e.toString()));
+      setStatus('Fehler beim Anlegen', 'err');
+    }finally{
+      createBtn.disabled = false;
+    }
+  };
+
+  // ===== Terminliste laden: robust mit Fallback ohne Index =====
+  let unsubscribeSessions = null;
+
+  function showListError(err) {
+    console.error('[sessions] onSnapshot error:', err && err.code, err && err.message);
+    sessionsTbody.innerHTML = `<tr><td colspan="4" class="err">Termine konnten nicht geladen werden.<br><small>${(err && (err.code + ': ' + err.message)) || ''}</small></td></tr>`;
+    listInfo.textContent = 'Fehler';
+    setStatus('Termine konnten nicht geladen werden.', 'err');
+  }
+
+  function renderSessions(rows) {
+    sessionsTbody.innerHTML = '';
+    if (!rows.length) {
+      sessionsTbody.innerHTML = '<tr><td colspan="4" class="muted">Keine Termine gefunden.</td></tr>';
+      listInfo.textContent = '0 Termin(e)';
+      setSelection(null, null);
+      return;
+    }
+    let n = 0;
+    rows.forEach(({id, data})=>{
+      n++;
+      const s = data;
+      const tr = document.createElement('tr');
+      tr.dataset.id = id;
+      tr.style.cursor = 'pointer';
+      const d = s.date?.toDate?.();
+      const dateStr = d ? d.toLocaleString() : '';
+      const st = s.open ? '<span class="ok">offen</span>' : '<span class="muted">geschlossen</span>';
+      tr.innerHTML = `<td class="mono">${dateStr}</td><td>${(s.topic||'–')}</td><td class="mono">${(s.school||'')}</td><td>${st}</td>`;
+      tr.onclick = ()=> selectRow(tr, id, s);
+      sessionsTbody.appendChild(tr);
+    });
+    listInfo.textContent = `${n} Termin(e)`;
+    setSelection(null, null);
+  }
+
+  async function loadSessions(){
+    const range = filterRange.value;
+
+    // alten Listener lösen
+    if (unsubscribeSessions) { try{ unsubscribeSessions(); } catch(_){} unsubscribeSessions = null; }
+
+    // Basis-Query: feste Schule
+    const base = db.collection('sessions').where('school','==', ACTIVE_SCHOOL);
+
+    sessionsTbody.innerHTML = '<tr><td colspan="4" class="muted">Lade…</td></tr>';
+    listInfo.textContent = '';
+
+    // „Alle“ -> KEINE inequality/kein orderBy nötig (kein Composite-Index)
+    if (range === 'all') {
+      try {
+        const snap = await base.get(); // Einmalig laden
+        const rows = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+        rows.sort((a,b) => (b.data.date?.toMillis?.()||0) - (a.data.date?.toMillis?.()||0));
+        renderSessions(rows);
+      } catch (err) {
+        showListError(err);
+      }
+      return;
+    }
+
+    // „Kommende“ / „Vergangene“ -> inequality + orderBy('date','desc')
+    let q = base;
+    const now = new Date();
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    if (range === 'upcoming') {
+      q = q.where('date','>=', firebase.firestore.Timestamp.fromDate(todayStart));
+    } else if (range === 'past') {
+      q = q.where('date','<', firebase.firestore.Timestamp.fromDate(now));
+    }
+    q = q.orderBy('date','desc').limit(200);
+
+    // Live-Listener
+    unsubscribeSessions = q.onSnapshot(snap=>{
+      const rows = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+      renderSessions(rows);
+    }, err=>{
+      // Typischer Fehler: FAILED_PRECONDITION (Index fehlt)
+      showListError(err);
+    });
+  }
+
+  function clearSelectionStyles(){
+    [...sessionsTbody.querySelectorAll('tr.sel')].forEach(tr=>tr.classList.remove('sel'));
+  }
+  function setSelection(id, sData){
+    sidLabel.textContent = id || '–';
+    openBtn.disabled  = !id || (sData && sData.open===true);
+    closeBtn.disabled = !id || !(sData && sData.open===true);
+    showQrBtn.disabled= !id;
+    deleteBtn.disabled= !id;
+    attachLiveList(id||null);
+  }
+  function selectRow(tr, id, sData){
+    clearSelectionStyles();
+    if (tr) tr.classList.add('sel');
+    setSelection(id, sData);
+    // QR-Box leeren bis „QR anzeigen“
+    qrBox.textContent = '(kein QR angezeigt)';
+    qrPayloadEl.textContent = '';
+  }
+  function selectRowById(id){
+    const tr = sessionsTbody.querySelector(`tr[data-id="${id}"]`);
+    if (tr){ tr.click(); }
+  }
+
+  // Filter-UI
+  reloadBtn.onclick = loadSessions;
+  filterRange.onchange = loadSessions;
+
+  // --- Aktionen: öffnen / schließen / QR zeigen / löschen ---
+  openBtn.onclick = async ()=>{
+    const sid = sidLabel.textContent;
+    if (sid==='–') return;
+    openBtn.disabled = true; closeBtn.disabled = true;
+    try{
+      const ref = db.collection('sessions').doc(sid);
+      const snap = await ref.get(); if (!snap.exists) throw new Error('Termin nicht gefunden.');
+      const nonce = newNonce();
+      await ref.update({ open: true, qrNonce: nonce });
+      const payload = buildQrPayload(sid, nonce);
+      renderQR(payload);
+      setStatus('Check-in geöffnet', 'ok');
+    }catch(e){
+      console.error(e); setStatus('Öffnen fehlgeschlagen','err');
+      alert(e.message||e);
+    }finally{
+      openBtn.disabled = false; closeBtn.disabled = false;
+    }
+  };
+
+  closeBtn.onclick = async ()=>{
+    const sid = sidLabel.textContent;
+    if (sid==='–') return;
+    openBtn.disabled = true; closeBtn.disabled = true;
+    try{
+      await db.collection('sessions').doc(sid).update({ open:false });
+      setStatus('Check-in geschlossen', 'warn');
+      qrBox.textContent = '(kein aktiver Check-in)';
+      qrPayloadEl.textContent = '';
+    }catch(e){
+      console.error(e); setStatus('Schließen fehlgeschlagen','err');
+      alert(e.message||e);
+    }finally{
+      openBtn.disabled = false; closeBtn.disabled = false;
+    }
+  };
+
+  showQrBtn.onclick = async ()=>{
+    const sid = sidLabel.textContent;
+    if (sid==='–') return;
+    try{
+      const snap = await db.collection('sessions').doc(sid).get();
+      if (!snap.exists) throw new Error('Termin nicht gefunden.');
+      const s = snap.data();
+      if (!s.open || !s.qrNonce){ setStatus('Check-in ist geschlossen – zuerst öffnen.', 'warn'); return; }
+      const payload = buildQrPayload(sid, s.qrNonce);
+      renderQR(payload);
+      setStatus('QR angezeigt', 'ok');
+    }catch(e){
+      console.error(e); setStatus('QR-Anzeige fehlgeschlagen','err');
+      alert(e.message||e);
+    }
+  };
+
+  deleteBtn.onclick = async ()=>{
+    const sid = sidLabel.textContent;
+    if (sid==='–') return;
+    if (!confirm('Diesen Termin wirklich löschen? (inkl. Anwesenheiten)')) return;
+    deleteBtn.disabled = true;
+    try{
+      const ref = db.collection('sessions').doc(sid);
+      const checkinsSnap = await ref.collection('checkins').limit(300).get();
+      const batch = db.batch();
+      checkinsSnap.forEach(d => batch.delete(d.ref));
+      batch.delete(ref);
+      await batch.commit();
+      setStatus('Termin gelöscht','ok');
+      setSelection(null,null);
+      qrBox.textContent = '(kein aktiver Check-in)';
+      qrPayloadEl.textContent = '';
+      await loadSessions();
+    }catch(e){
+      console.error(e); setStatus('Löschen fehlgeschlagen','err');
+      alert(e.message||e);
+    }finally{
+      deleteBtn.disabled = false;
+    }
+  };
+
+  // Start
+  await loadSessions();
+
+})();
+</script>
+</body>
+</html>
