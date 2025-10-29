@@ -11,8 +11,19 @@
     }
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
-    header{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);position:relative;}
+    header{
+      display:flex;justify-content:center;align-items:center;gap:16px;
+      padding:10px 16px;border-bottom:1px solid var(--border);position:relative;
+    }
     header img{height:60px}
+
+    /* Menü-Button (nur mobil sichtbar) */
+    #menuToggle{
+      position:absolute;left:12px;top:14px;
+      background:transparent;border:none;color:white;font-size:26px;
+      cursor:pointer;display:none;
+    }
+
     main{display:flex;flex:1;min-height:0;overflow:hidden;}
 
     /* ====== NAVIGATION ====== */
@@ -20,9 +31,20 @@
       width:260px;background:var(--card);border-right:1px solid var(--border);
       padding:16px;display:flex;flex-direction:column;gap:8px;
       height:calc(100vh - 80px);overflow-y:auto;
-      transition:transform .3s ease;
+      transition:transform .30s ease;
     }
+    /* Mobil: per .hidden herausfahren */
     nav.hidden{transform:translateX(-100%);}
+    /* Desktop: Navigation immer sichtbar & nicht herausschiebbar, Menü-Button ausblenden */
+    @media(min-width:901px){
+      #menuToggle{display:none;}
+      nav{transform:none !important;position:sticky;top:0;}
+    }
+    @media(max-width:900px){
+      #menuToggle{display:block;}
+      nav{position:fixed;top:80px;left:0;height:calc(100vh - 80px);z-index:1000;}
+    }
+
     nav button, nav .submenu-toggle{
       background:transparent;color:var(--text);text-align:left;border:none;
       padding:10px 14px;font-size:15px;border-radius:8px;cursor:pointer;
@@ -38,6 +60,7 @@
     .submenu button{font-size:14px;color:var(--muted);}
     .submenu.open{display:flex;}
 
+    /* Zweizeiliger Button für Check-In */
     #attendBtn {
       flex-direction:column;
       align-items:flex-start;
@@ -85,23 +108,11 @@
 
     .calendar-wrap{margin:18px 0;width:100%;height:520px;display:none}
     .calendar-wrap iframe{width:100%;height:100%;border:none;border-radius:8px;background:#fff}
-
-    /* ====== MOBILE ====== */
-    #menuToggle{
-      position:absolute;left:12px;top:14px;
-      background:transparent;border:none;color:white;font-size:26px;
-      cursor:pointer;display:none;
-    }
-    @media(max-width:900px){
-      #menuToggle{display:block;}
-      nav{position:fixed;top:80px;left:0;height:calc(100vh - 80px);z-index:1000;}
-      .content{padding:16px;}
-    }
   </style>
 </head>
 <body>
 <header>
-  <button id="menuToggle">☰</button>
+  <button id="menuToggle" aria-label="Navigation öffnen/schließen">☰</button>
   <img id="logo-left" src="pluslogo.png" alt="Logo links">
   <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
   <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
@@ -112,8 +123,8 @@
   <nav id="navMenu" class="hidden">
     <button id="profileBtn">👤 Mein Profil</button>
 
-    <button class="submenu-toggle" id="trainerToggle">📚 Trainer ▾</button>
-    <div class="submenu" id="trainerSub">
+    <button class="submenu-toggle" id="trainerToggle" aria-expanded="false">📚 Trainer ▾</button>
+    <div class="submenu" id="trainerSub" aria-hidden="true">
       <button id="oneNoteBtn">📓 OneNote</button>
       <button id="templatesBtn">📂 Vorlagen</button>
       <button id="driveBtn">💾 Drive</button>
@@ -127,13 +138,14 @@
       <button onclick="location.href='checkliste.html'">✅ Checkliste</button>
     </div>
 
-    <button class="submenu-toggle" id="adminToggle" style="display:none;">🛠️ Admin ▾</button>
-    <div class="submenu" id="adminSub">
+    <button class="submenu-toggle" id="adminToggle" aria-expanded="false" style="display:none;">🛠️ Admin ▾</button>
+    <div class="submenu" id="adminSub" aria-hidden="true">
       <button id="calendarBtn">📅 Kalender</button>
       <button onclick="location.href='registrierung.html'">🧾 Registrierung</button>
       <button onclick="location.href='session-admin.html'">🏋️‍♂️ Trainingstermin erstellen</button>
     </div>
 
+    <!-- Zweizeiliger Check-In Button -->
     <button id="attendBtn" onclick="location.href='attend.html'">
       <span>✅ Ausbildertraining</span>
       <span>Check-In</span>
@@ -149,57 +161,283 @@
 
   <!-- ===== CONTENT ===== -->
   <div class="content" id="app" style="display:none">
+    <!-- Rechts oben: Schule wählen -->
     <div class="top-actions">
       <button class="btn ghost" id="chooseSchoolBtn" style="display:none">
         Schule: <span id="chooseSchoolLabel">MASTER</span>
       </button>
     </div>
 
+    <!-- Nur der Newsticker -->
     <div class="ticker"><div id="tickerInner" class="ticker-inner">Lade Newsticker…</div></div>
 
+    <!-- Kalender -->
     <div class="calendar-wrap" id="calendarWrap">
       <iframe id="calendarFrame" src="about:blank" title="Trainingskalender"></iframe>
     </div>
 
+    <!-- Rollenanzeige unten rechts -->
     <span id="activeRolePill" class="pill" style="display:none"></span>
   </div>
 </main>
 
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
 
 <script>
+/* ===== Firebase init ===== */
 if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
 const auth=firebase.auth(), db=firebase.firestore();
 auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-/* ==== Menü-Button ==== */
+/* ===== Navigation: Toggle & Submenüs ===== */
 const nav=document.getElementById('navMenu');
-document.getElementById('menuToggle').onclick=()=>nav.classList.toggle('hidden');
+const menuBtn=document.getElementById('menuToggle');
+menuBtn.onclick=()=> nav.classList.toggle('hidden');
 
-/* ==== Submenü-Toggle ==== */
-function setupToggle(tId,sId){const t=document.getElementById(tId),s=document.getElementById(sId);if(!t||!s)return;t.onclick=()=>s.classList.toggle('open');}
+/* Schließt das Menü automatisch nach Klick auf einen Link auf Mobilgeräten */
+function closeNavOnMobile(){ if (window.matchMedia('(max-width: 900px)').matches) nav.classList.add('hidden'); }
+nav.addEventListener('click', (e)=>{
+  const isAction = e.target.closest('button') && !e.target.closest('.submenu-toggle');
+  if (isAction) closeNavOnMobile();
+});
+
+function setupToggle(toggleId, subId){
+  const t=document.getElementById(toggleId), s=document.getElementById(subId);
+  if(!t||!s) return;
+  t.onclick=()=>{
+    const open = !s.classList.contains('open');
+    s.classList.toggle('open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+    s.setAttribute('aria-hidden', open ? 'false' : 'true');
+  };
+}
 setupToggle('trainerToggle','trainerSub');
 setupToggle('adminToggle','adminSub');
 
-/* ==== Logout & Links ==== */
-document.getElementById('logoutBtn').onclick=async()=>{await auth.signOut();sessionStorage.clear();location.href='index.html';};
+/* ===== Buttons oben/unten ===== */
 document.getElementById('profileBtn').onclick=()=>location.href='profil.html';
 document.getElementById('settingsBtn').onclick=()=>location.href='einstellungen.html';
+document.getElementById('logoutBtn').onclick=async()=>{await auth.signOut();sessionStorage.clear();location.href='index.html';};
 
-/* ==== Firestore, Auth, Rollen ==== */
-// (Hier kommt dein bisheriger Firestore- und Rollen-Code unverändert hinein)
-// ...
+/* ===== Logos nach Schule ===== */
+function preloadAndSet(imgEl,u){const t=new Image();t.onload=()=>imgEl.src=u;t.src=u;}
+function applyHeaderBySchool(school){
+  const h=document.querySelector('header');
+  h.innerHTML=`<button id="menuToggle" aria-label="Navigation öffnen/schließen">☰</button>
+               <img id="logo-left" src="pluslogo.png" alt="Logo links">
+               <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+               <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">`;
+  // Menü-Button Referenz neu binden:
+  document.getElementById('menuToggle').onclick=()=> nav.classList.toggle('hidden');
+  if(!school || school.toLowerCase()==='master') return;
+  const base=`logos/${school.toLowerCase()}`;
+  preloadAndSet(document.getElementById('logo-left'),`${base}/logo-left.jpg`);
+  preloadAndSet(document.getElementById('logo-center'),`${base}/logo-center.jpg`);
+  preloadAndSet(document.getElementById('logo-right'),`${base}/logo-right.jpg`);
+}
+
+/* ===== Rollen-Helfer ===== */
+const normalizeRole = r=>{
+  r=(r||'').toLowerCase();
+  if(['administrator','admins','adminstrator'].includes(r)) r='admin';
+  if(['trainer/in','trainerin','coach'].includes(r)) r='trainer';
+  if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r)) r='si-fu';
+  return r;
+};
+
+/* ===== Schulen lesen (case-flexibel, wie Original) ===== */
+function splitSchoolsString(str){ if(!str) return []; return String(str).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean); }
+async function loadAccessibleSchools(key){
+  const tries=[key, key?.toUpperCase(), key?.charAt(0)?.toUpperCase()+key?.slice(1)?.toLowerCase(), key?.toLowerCase()].filter(Boolean);
+  const seen=new Set();
+  for(const k of tries){
+    if(seen.has(k)) continue; seen.add(k);
+    try{
+      const snap=await db.collection('Schulen').doc(k).get();
+      if(snap.exists){
+        const d=snap.data()||{};
+        if (Array.isArray(d.School)) return d.School.map(String).map(s=>s.trim()).filter(Boolean);
+        if (typeof d.School==='string') return splitSchoolsString(d.School);
+        if (Array.isArray(d.schools)) return d.schools.map(String).map(s=>s.trim()).filter(Boolean);
+        if (typeof d.schools==='string') return splitSchoolsString(d.schools);
+        return [];
+      }
+    }catch(e){ console.warn('loadAccessibleSchools error for', k, e); }
+  }
+  return [];
+}
+
+/* ===== Flexible Doc-Leser ===== */
+async function getDocFlexible(collectionName, key){
+  const base=(key ?? '').toString().trim();
+  const tries=[base, base.toUpperCase(), base.charAt(0).toUpperCase()+base.slice(1).toLowerCase(), base.toLowerCase()].filter(Boolean);
+  const unique=[...new Set(tries)];
+  for(const id of unique){
+    try{
+      const snap=await db.collection(collectionName).doc(id).get();
+      if(snap.exists) return { snap, id };
+    }catch(e){ console.warn(`Fehler beim Lesen von ${collectionName}/${id}:`, e); }
+  }
+  return null;
+}
+
+/* ===== Link-Buttons für Schule setzen ===== */
+async function setLink(buttonId, schoolName, fieldCandidates){
+  const btn=document.getElementById(buttonId);
+  try{
+    const res=await getDocFlexible('links', schoolName);
+    if(res){
+      const data=res.snap.data()||{};
+      for(const f of fieldCandidates){ if(data[f]){ btn.onclick=()=>window.open(data[f],'_blank'); return; } }
+    }
+    btn.onclick=()=>alert('Kein Link für diese Schule hinterlegt.');
+  }catch(e){
+    console.error('Fehler beim Laden von Links:', e);
+    btn.onclick=()=>alert('Fehler beim Laden des Links.');
+  }
+}
+
+/* ===== Kalender-Link + iFrame je Schule ===== */
+async function setupCalendarForSchool(schoolName){
+  const res=await getDocFlexible('links', schoolName);
+  let adminCal=null, iframeCal=null;
+  if(res){
+    const d=res.snap.data()||{};
+    adminCal=d.adminkalender || null;
+    iframeCal=d.trainingskalender || d.kalender || d.calendarUrl || d.calendarURL || null;
+  }
+  const btn=document.getElementById('calendarBtn');
+  if(btn){ btn.onclick = adminCal ? ()=>window.open(adminCal,'_blank') : ()=>alert('Kein Kalender-Link (adminkalender) hinterlegt.'); }
+  const frame=document.getElementById('calendarFrame'), wrap=document.getElementById('calendarWrap');
+  if(iframeCal){ frame.src=iframeCal; wrap.style.display='block'; }
+  else { frame.src='about:blank'; wrap.style.display='none'; }
+}
+
+/* ===== Auth-Init ===== */
+auth.onAuthStateChanged(async user=>{
+  if(!user){ location.replace('index.html'); return; }
+  document.getElementById('app').style.display='flex';
+
+  let role = normalizeRole(sessionStorage.getItem('role'));
+  let baseSchool = (sessionStorage.getItem('school')||'').trim();
+
+  if(!role || !baseSchool){
+    const p=await db.collection('rollen').doc(user.uid).get();
+    if(p.exists){
+      const d=p.data(); role=normalizeRole(d.role); baseSchool=(d.school||'').trim();
+      sessionStorage.setItem('role', role);
+      sessionStorage.setItem('school', baseSchool);
+      sessionStorage.setItem('loggedInUser', user.email || '');
+    }
+  }
+
+  // Rolle unten rechts anzeigen
+  const rolePill=document.getElementById('activeRolePill');
+  rolePill.textContent='Rolle: ' + (role || '–');
+  rolePill.style.display='inline-block';
+
+  // Admin-Menü nur für admin/si-fu
+  if(['admin','si-fu'].includes(role)){
+    const adminToggle=document.getElementById('adminToggle');
+    adminToggle.style.display='flex';
+  }
+
+  // Aktive Schule bestimmen
+  let active = (sessionStorage.getItem('activeSchool') || baseSchool || 'MASTER').trim();
+  const chooseBtn=document.getElementById('chooseSchoolBtn'), chooseLbl=document.getElementById('chooseSchoolLabel');
+  const upper = (baseSchool||'').toUpperCase();
+  let list = [];
+
+  if (upper === 'MASTER'){
+    list = await loadAccessibleSchools('MASTER');
+    chooseBtn.style.display='inline-block';
+  } else {
+    list = await loadAccessibleSchools(baseSchool);
+    if (list.length > 0){
+      chooseBtn.style.display='inline-block';
+      if (!active || active.toLowerCase() === baseSchool.toLowerCase()){
+        active = list[0] || active;
+        sessionStorage.setItem('activeSchool', (active||'').toLowerCase());
+      }
+    } else {
+      chooseBtn.style.display='none';
+      active = baseSchool;
+    }
+  }
+
+  // Header-Logos & Label
+  chooseLbl.textContent = (String(active).toUpperCase()==='MASTER' ? 'MASTER' : active);
+  applyHeaderBySchool(active);
+
+  // Trainer-Buttons + Kalender initial
+  await setLink('oneNoteBtn',  active, ['onenote','OneNote','OneNoteURL']);
+  await setLink('templatesBtn',active, ['vorlagen']);
+  await setLink('driveBtn',    active, ['drive']);
+  await setupCalendarForSchool(active);
+
+  // Schulwahl-Dialog öffnen
+  chooseBtn.onclick = ()=>{
+    const dlg=document.getElementById('chooseSchoolDlg');
+    const sel=document.getElementById('schoolSelect');
+    sel.innerHTML='';
+    if (upper === 'MASTER'){
+      const o=document.createElement('option'); o.value='MASTER'; o.textContent='MASTER (alle)'; sel.appendChild(o);
+    }
+    list.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
+    const want = (sessionStorage.getItem('activeSchool') || active || (upper==='MASTER'?'MASTER':'')) || '';
+    sel.value = (want.toUpperCase()==='MASTER') ? 'MASTER' : want;
+    dlg.style.display='flex';
+  };
+});
+
+/* ===== Schulwahl-Dialog Aktionen ===== */
+document.addEventListener('click', async (e)=>{
+  const btn=e.target.closest('button'); if(!btn) return;
+  if(btn.id==='dlgCancel'){ document.getElementById('chooseSchoolDlg').style.display='none'; }
+  if(btn.id==='dlgApply'){
+    const sel=document.getElementById('schoolSelect');
+    const val = sel.value || 'MASTER';
+    sessionStorage.setItem('activeSchool', val.toLowerCase());
+    document.getElementById('chooseSchoolLabel').textContent = (val.toUpperCase()==='MASTER' ? 'MASTER' : val);
+    applyHeaderBySchool(val);
+    await setLink('oneNoteBtn',  val, ['onenote','OneNote','OneNoteURL']);
+    await setLink('templatesBtn',val, ['vorlagen']);
+    await setLink('driveBtn',    val, ['drive']);
+    await setupCalendarForSchool(val);
+    document.getElementById('chooseSchoolDlg').style.display='none';
+    closeNavOnMobile();
+  }
+});
+
+/* ===== Newsticker ===== */
+const csvUrl="https://docs.google.com/spreadsheets/d/e/2PACX-1vTqv9vVFE1kHZdb48JLBpUd3uwsin78PVjCLEGDmUztI78RYSPstjAxUi0uuwV-34fe91G4SfuQHGsl/pub?output=csv";
+(async()=>{
+  try{
+    const r=await fetch(csvUrl); const t=await r.text();
+    const first=t.trim().split(/\r?\n/)[0]||'Keine Daten gefunden';
+    const el=document.getElementById('tickerInner');
+    el.textContent=first; const d=Math.min(Math.max(first.length/6,8),30);
+    el.classList.add('animate'); el.style.animationDuration=d+'s';
+  }catch(e){
+    document.getElementById('tickerInner').textContent='Fehler beim Laden';
+  }
+})();
 </script>
 
-<!-- ==== Schulwahl-Dialog ==== -->
-<div class="scope-dialog-backdrop" id="chooseSchoolDlg" style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:999">
-  <div class="scope-dialog" style="width:92%;max-width:460px;background:#111;color:#fff;border:1px solid #333;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.6);padding:16px;">
-    <h3>Schule wählen</h3>
-    <select id="schoolSelect" style="width:100%;background:#000;color:#fff;border:1px solid #333;border-radius:10px;padding:10px 12px"></select>
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+<!-- ===== Schulwahl-Dialog ===== -->
+<div class="scope-dialog-backdrop" id="chooseSchoolDlg"
+     style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:999">
+  <div class="scope-dialog"
+       role="dialog" aria-modal="true" aria-labelledby="scopeTitle"
+       style="width:92%;max-width:460px;background:#111;color:#fff;border:1px solid #333;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.6);padding:16px;">
+    <h3 id="scopeTitle" style="margin:0 0 10px;font-size:20px;">Schule wählen</h3>
+    <select id="schoolSelect" class="scope-select"
+            style="width:100%;background:#000;color:#fff;border:1px solid #333;border-radius:10px;padding:10px 12px"></select>
+    <div class="scope-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
       <button id="dlgCancel" class="btn ghost">Abbrechen</button>
       <button id="dlgApply" class="btn">Übernehmen</button>
     </div>
