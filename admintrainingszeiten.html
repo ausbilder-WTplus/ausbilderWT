@@ -17,10 +17,10 @@
     .btn{ background:#fff; color:#000; border:none; border-radius:10px; padding:8px 12px; font-weight:bold; cursor:pointer; }
     .btn.ghost{ background:transparent; color:#fff; border:1px solid var(--border); }
     .btn.danger{ background:var(--red); color:#fff; }
+    select.school{ background:#000; color:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 10px; }
 
     h1{ margin:0 0 8px; font-size:24px; }
     .hint{ color:var(--muted); margin-bottom:18px; font-size:14px; }
-    select.school{ background:#000; color:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 10px; }
 
     .day{ margin-top:18px; border-top:1px solid var(--border); padding-top:14px; }
     .day h2{ margin:0 0 8px; font-size:18px; color:#eaeaea; letter-spacing:.2px; display:flex; gap:8px; align-items:center; }
@@ -57,8 +57,8 @@
     <div class="top-bar">
       <h1>Trainingszeiten</h1>
       <div class="controls">
-        <!-- ★ Nur sichtbar, wenn aktive Schule MASTER ist -->
-        <select id="schoolSelect" class="school" style="display:none"></select>
+        <!-- immer sichtbar, Auswahl ist Pflicht -->
+        <select id="schoolSelect" class="school" title="Schule wählen"></select>
         <button id="editSchemaBtn" class="btn ghost" style="display:none">✏️ Struktur bearbeiten</button>
         <button id="addDayBtn" class="btn ghost" style="display:none">➕ Tag</button>
         <button id="saveSchemaBtn" class="btn" style="display:none">💾 Struktur speichern</button>
@@ -66,13 +66,12 @@
       </div>
       <div id="userInfo" class="user-info">
         Rolle: <span id="userRole">…</span> |
-        Schule: <span id="userSchool">…</span>
+        Gruppe: <span id="userSchool">…</span>
       </div>
     </div>
 
     <div class="hint" id="hint">
-      Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern.
-      Trainer sehen die Einträge, können sie aber nicht ändern.
+      Bitte oben zuerst eine Schule wählen. Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern.
     </div>
 
     <div id="schedule"></div>
@@ -92,28 +91,52 @@
   auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
   // ---------- Helpers ----------
-  const slug = s => String(s||'').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
-  const root = document.getElementById('schedule');
   const $ = id => document.getElementById(id);
+  const slug = s => String(s||'').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
+  const normalizeRole = r => {
+    r=(r||"").toLowerCase();
+    if(['administrator','admins','adminstrator'].includes(r)) r='admin';
+    if(['trainer/in','trainerin','coach'].includes(r)) r='trainer';
+    if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r)) r='si-fu';
+    return r;
+  };
+
+  function splitSchoolsString(str){ if(!str) return []; return String(str).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean); }
+  async function getDocFlexible(col,key){
+    const base=(key??'').trim();
+    const tries=[base,base.toUpperCase(),base.charAt(0).toUpperCase()+base.slice(1).toLowerCase(),base.toLowerCase()];
+    for(const id of tries){ try{ const snap=await db.collection(col).doc(id).get(); if(snap.exists) return {snap,id}; }catch(e){} }
+    return null;
+  }
+  async function loadAccessibleSchools(groupKey){
+    const r = await getDocFlexible('Schulen', groupKey);
+    if(!r) return [];
+    const d = r.snap.data()||{};
+    if(Array.isArray(d.School)) return d.School.map(String).map(s=>s.trim()).filter(Boolean);
+    if(typeof d.School==='string') return splitSchoolsString(d.School);
+    if(Array.isArray(d.schools)) return d.schools.map(String).map(s=>s.trim()).filter(Boolean);
+    if(typeof d.schools==='string') return splitSchoolsString(d.schools);
+    return [];
+  }
 
   // ---------- State ----------
   let STATE = {
     role: 'user',
-    school: '',          // effektive Schule (aktiv)
-    isMasterScope: false,
-    canEdit: false,      // Admin/Si-Fu
-    editMode: false,     // Schema-Bearbeitung aktiv
-    schema: null,        // { slots:[{day,slots:[{time, what, cap}]}] }
-    belegung: {},        // { slotId: [names] }
+    school: '',              // ausgewählte Schule (leer = noch keine Auswahl)
+    groupKey: '',            // Gruppe aus sessionStorage.school (z.B. MASTER / Degenhardt / …)
+    canEdit: false,
+    editMode: false,
+    schema: null,            // { slots: [...] }
+    belegung: {},            // { slotId: [names] }
   };
 
-  // ---------- Firestore Refs (neu) ----------
-  // ★ trainingszeiten/{school}/trainingszeiten/{docId}
+  // ---------- Firestore Refs ----------
+  // trainingszeiten/{school}/trainingszeiten/{schema|belegung}
   const COL = (school) => db.collection('trainingszeiten').doc(school).collection('trainingszeiten');
   const REF_SCHEMA = (school) => COL(school).doc('schema');
   const REF_BELEG  = (school) => COL(school).doc('belegung');
 
-  // ---------- Default-Schema (nur beim allerersten Mal) ----------
+  // ---------- Default-Schema ----------
   const DEFAULT_SCHEMA = {
     slots: [
       { day: "Montag", slots: [
@@ -134,36 +157,18 @@
     ]
   };
 
-  // ---------- Laden & Rendern ----------
+  // ---------- Util ----------
   function padN(arr, n){
     const out = Array.isArray(arr) ? arr.slice(0, n) : [];
     while(out.length<n) out.push("");
     return out;
   }
 
-  function getActiveSchool(){
-    // bevorzugt die vom Hauptmenü gesetzte activeSchool
-    const a = (sessionStorage.getItem('activeSchool')||'').trim();
-    const s = (sessionStorage.getItem('school')||'').trim();
-    const eff = a || s || 'MASTER';
-    return eff.toLowerCase();
-  }
-
-  function normalizeRole(r){
-    r=(r||"").toLowerCase();
-    if(['administrator','admins','adminstrator'].includes(r)) r='admin';
-    if(['trainer/in','trainerin','coach'].includes(r)) r='trainer';
-    if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r)) r='si-fu';
-    return r;
-  }
-
+  // ---------- Schema/Belegung laden ----------
   async function ensureSchemaExists(school){
     const snap = await REF_SCHEMA(school).get();
-    if (!snap.exists) {
-      await REF_SCHEMA(school).set(DEFAULT_SCHEMA);
-    }
+    if (!snap.exists) await REF_SCHEMA(school).set(DEFAULT_SCHEMA);
   }
-
   async function loadAllForSchool(school){
     await ensureSchemaExists(school);
     const [schemaSnap, belegSnap] = await Promise.all([
@@ -175,15 +180,24 @@
     return { schema, beleg };
   }
 
+  // ---------- Rendering ----------
+  const root = $('schedule');
+
   function renderView(){
     root.innerHTML = "";
 
-    const { schema, beleg, canEdit, editMode, school } = STATE;
+    const { schema, beleg, canEdit, editMode } = STATE;
 
-    // Hinweis oben aktualisieren
-    $('hint').innerHTML = editMode
-      ? 'Struktur bearbeiten: Tage, Zeiten, Bezeichnung und Kapazität. Änderungen erst nach <b>„Struktur speichern“</b> wirksam.'
-      : 'Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern. Trainer sehen die Einträge, können sie aber nicht ändern.';
+    $('hint').innerHTML = !STATE.school
+      ? 'Bitte oben zuerst eine Schule wählen. Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern.'
+      : editMode
+        ? 'Struktur bearbeiten: Tage, Zeiten, Bezeichnung und Kapazität. Änderungen erst nach <b>„Struktur speichern“</b> wirksam.'
+        : 'Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern. Trainer sehen die Einträge, können sie aber nicht ändern.';
+
+    if (!STATE.school) {
+      // noch keine Schule gewählt
+      return;
+    }
 
     for(const group of (schema.slots || [])){
       const day = document.createElement('div');
@@ -259,12 +273,12 @@
           info.appendChild(label);
         }
 
-        // Eingabefelder (Cap dynamisch)
+        // Eingabefelder
         const field=document.createElement('div');
         field.className='field';
         field.style.gridTemplateColumns = `repeat(${cap}, minmax(120px,1fr))`;
-
         const current = padN(beleg[id], cap);
+
         for(let i=0;i<cap;i++){
           const input=document.createElement('input');
           input.type='text';
@@ -272,7 +286,7 @@
           input.className='name';
           input.dataset.slotId=id;
           input.dataset.index=String(i);
-          input.disabled = !(canEdit && !editMode); // während Schema-Edit: Namen nicht änderbar
+          input.disabled = !(canEdit && !editMode);
           input.value = current[i]||'';
           if (!input.disabled){
             input.addEventListener('input',()=>scheduleSave(id));
@@ -296,6 +310,7 @@
     }
   }
 
+  // ---------- Speichern der Belegung ----------
   let saveTimer=null;
   function scheduleSave(slotId){
     clearTimeout(saveTimer);
@@ -305,7 +320,7 @@
   }
 
   async function doSave(){
-    // Namen aus UI zusammensammeln anhand aktueller Kapazität
+    if(!STATE.school) return; // ohne Schule kein Save
     const data={};
     document.querySelectorAll('input.name').forEach(inp=>{
       const sid=inp.dataset.slotId;
@@ -333,8 +348,8 @@
 
   // ---------- Schema speichern ----------
   async function saveSchema(){
+    if(!STATE.school) return;
     try{
-      // Aufräumen: leere Slots/Tage entfernen
       const cleaned = { slots: (STATE.schema.slots||[])
         .map(d=>({ day:(d.day||'').trim(),
                    slots:(d.slots||[]).map(s=>({
@@ -347,25 +362,20 @@
       await REF_SCHEMA(STATE.school).set(cleaned,{merge:false});
       STATE.schema = cleaned;
       STATE.editMode=false;
-      // Nach Strukturänderung alte Belegung auf gültige Slots trimmen
+
+      // Belegung auf gültige Slots + Kapazitäten trimmen
       const newIds = new Set();
+      const capById = {};
       for(const d of cleaned.slots){
         for(const s of d.slots){
-          newIds.add(`${slug(d.day)}__${slug(s.time)}`);
+          const id = `${slug(d.day)}__${slug(s.time)}`;
+          newIds.add(id);
+          capById[id]=Math.max(1, Number(s.cap||6));
         }
       }
       const trimmed = {};
       for(const id of newIds){
-        // vorhandene Namen soweit möglich übernehmen und auf neue cap trimmen
-        const found = STATE.belegung[id] || [];
-        // cap lookup:
-        let cap=6;
-        for(const d of cleaned.slots){
-          for(const s of d.slots){
-            if(`${slug(d.day)}__${slug(s.time)}`===id){ cap = Math.max(1, Number(s.cap||6)); }
-          }
-        }
-        trimmed[id] = padN(found, cap);
+        trimmed[id] = padN(STATE.belegung[id]||[], capById[id]);
       }
       await REF_BELEG(STATE.school).set(trimmed,{merge:false});
       STATE.belegung = trimmed;
@@ -378,23 +388,24 @@
   }
 
   function toggleSchemaButtons(){
-    const showEditUI = STATE.canEdit;
-    $('editSchemaBtn').style.display = showEditUI && !STATE.editMode ? 'inline-block' : 'none';
-    $('addDayBtn').style.display     = showEditUI &&  STATE.editMode ? 'inline-block' : 'none';
-    $('saveSchemaBtn').style.display = showEditUI &&  STATE.editMode ? 'inline-block' : 'none';
-    $('cancelSchemaBtn').style.display=showEditUI &&  STATE.editMode ? 'inline-block' : 'none';
+    const hasSchool = !!STATE.school && STATE.school!=='master';
+    const showEditUI = STATE.canEdit && hasSchool;
+
+    $('editSchemaBtn').style.display   = (showEditUI && !STATE.editMode) ? 'inline-block' : 'none';
+    $('addDayBtn').style.display       = (showEditUI &&  STATE.editMode) ? 'inline-block' : 'none';
+    $('saveSchemaBtn').style.display   = (showEditUI &&  STATE.editMode) ? 'inline-block' : 'none';
+    $('cancelSchemaBtn').style.display = (showEditUI &&  STATE.editMode) ? 'inline-block' : 'none';
   }
 
   function enterEdit(){
-    if(!STATE.canEdit) return;
+    if(!STATE.canEdit || !STATE.school) return;
     STATE.editMode = true;
-    // tiefe Kopie, damit Abbrechen möglich
     STATE._backup = JSON.parse(JSON.stringify(STATE.schema));
     renderView();
     toggleSchemaButtons();
   }
   function cancelEdit(){
-    if(!STATE.canEdit) return;
+    if(!STATE.canEdit || !STATE.school) return;
     STATE.editMode = false;
     if(STATE._backup){ STATE.schema = STATE._backup; STATE._backup=null; }
     renderView();
@@ -405,81 +416,78 @@
   $('saveSchemaBtn').onclick = saveSchema;
   $('cancelSchemaBtn').onclick = cancelEdit;
   $('addDayBtn').onclick = ()=>{
+    if(!STATE.schema) STATE.schema={slots:[]};
     STATE.schema.slots = STATE.schema.slots || [];
     STATE.schema.slots.push({ day:'Neuer Tag', slots:[] });
     renderView();
   };
 
-  // ---------- Schul-Auswahl (nur wenn MASTER aktiv) ----------
+  // ---------- Schul-Dropdown (Pflicht) ----------
   async function setupSchoolPicker(){
     const sel = $('schoolSelect');
-    const active = (sessionStorage.getItem('activeSchool')||'').trim();
-    const base   = (sessionStorage.getItem('school')||'').trim();
+    sel.disabled = true;
 
-    // Wenn wirklich MASTER aktiv ist, Dropdown zeigen; ansonsten ausblenden
-    const isMaster = (active||base).toUpperCase()==='MASTER';
-    $('schoolSelect').style.display = isMaster ? 'inline-block' : 'none';
-    STATE.isMasterScope = isMaster;
+    // Gruppe (so nennst du sie in sessionStorage.school); MASTER = alle
+    const groupKey = (sessionStorage.getItem('school')||'').trim() || 'MASTER';
+    STATE.groupKey = groupKey;
 
-    if(!isMaster) return;
+    let list = await loadAccessibleSchools(groupKey.toUpperCase()==='MASTER' ? 'MASTER' : groupKey);
+    list = list.map(s=>String(s).trim()).filter(Boolean);
 
-    // einfache Quelle: Schulen aus Collection "Schulen" → Doc "MASTER", Feld "School" (Array oder String)
-    async function loadAccessibleSchools(key){
-      try{
-        const tries=[key,key?.toUpperCase(),key?.charAt(0)?.toUpperCase()+key?.slice(1)?.toLowerCase(),key?.toLowerCase()].filter(Boolean);
-        for(const k of tries){
-          const snap=await db.collection('Schulen').doc(k).get();
-          if(snap.exists){
-            const d=snap.data()||{};
-            const arr = Array.isArray(d.School) ? d.School
-                     : Array.isArray(d.schools) ? d.schools
-                     : (typeof d.School==='string'? d.School.split(/[,\n;]+/): []);
-            return (arr||[]).map(s=>String(s).trim()).filter(Boolean);
-          }
-        }
-      }catch(e){}
-      return [];
+    sel.innerHTML='';
+    const mk = (v,t)=>{const o=document.createElement('option');o.value=v; o.textContent=t; return o;};
+    sel.appendChild(mk('', '— bitte Schule wählen —'));
+    if(groupKey.toUpperCase()==='MASTER') sel.appendChild(mk('MASTER','MASTER (alle)'));
+    list.forEach(name=> sel.appendChild(mk(name.toLowerCase(), name)));
+
+    // Wenn zuvor gültige Schule gewählt war, setzen – sonst leerlassen
+    const last = (sessionStorage.getItem('activeSchool')||'').toLowerCase();
+    if(last && (last==='master' || list.map(s=>s.toLowerCase()).includes(last))){
+      sel.value = last;
+      STATE.school = last==='master' ? '' : last; // MASTER = keine konkrete Schule
+    } else {
+      sel.value = '';
+      STATE.school = '';
     }
 
-    const list = await loadAccessibleSchools('MASTER');
-    sel.innerHTML='';
-    const mk = (v,t)=>{const o=document.createElement('option');o.value=v;o.textContent=t; return o;};
-    sel.appendChild(mk('MASTER','MASTER (Bitte Schule wählen)'));
-    list.forEach(s=> sel.appendChild(mk(s.toLowerCase(), s)));
-    sel.value = STATE.school || 'MASTER';
+    sel.disabled = false;
+
     sel.onchange = async ()=>{
-      STATE.school = sel.value;
-      sessionStorage.setItem('activeSchool', STATE.school);
-      await initLoad(); // neu laden für gewählte Schule
+      const v = sel.value;
+      sessionStorage.setItem('activeSchool', v);
+      STATE.school = (v && v!=='master') ? v : '';
+      STATE.editMode = false;
+      toggleSchemaButtons();
+      await initLoad(true); // reload
     };
   }
 
   // ---------- Init ----------
-  async function initLoad(){
-    // Rolle/Schule lesen
+  async function initLoad(fromPicker=false){
+    // Rolle/Gruppenanzeige
     const role = normalizeRole(sessionStorage.getItem('role')||'');
-    let school = getActiveSchool();
-    STATE.role   = role || 'user';
-    STATE.school = school;
-    STATE.canEdit = (role==='admin'||role==='si-fu');
+    const group = (sessionStorage.getItem('school')||'').trim() || 'MASTER';
+    STATE.role = role || 'user';
+    STATE.canEdit = (STATE.role==='admin' || STATE.role==='si-fu');
 
     $('userRole').textContent   = STATE.role;
-    $('userSchool').textContent = (STATE.school||'–');
+    $('userSchool').textContent = group || '–';
 
-    await setupSchoolPicker();
+    if(!fromPicker) await setupSchoolPicker();
 
-    if (STATE.isMasterScope && (!STATE.school || STATE.school==='master')){
-      // MASTER ohne konkrete Schule → Hinweis
-      root.innerHTML = '<div class="hint">Bitte oben eine Schule wählen.</div>';
+    if(!STATE.school){
+      // keine konkrete Schule gewählt → Hinweis + Buttons aus
+      root.innerHTML = '<div class="hint">Bitte oben zuerst eine Schule wählen.</div>';
       toggleSchemaButtons();
       return;
     }
 
+    // Daten der gewählten Schule laden
     const { schema, beleg } = await loadAllForSchool(STATE.school);
     STATE.schema = schema;
     STATE.belegung = beleg;
-
     STATE.editMode = false;
+
     renderView();
     toggleSchemaButtons();
   }
@@ -488,17 +496,17 @@
   auth.onAuthStateChanged(async user=>{
     if(!user){location.href="index.html";return;}
     try{
-      // Fallback: rolle/schule ggf. aus DB laden, wenn SessionStorage leer
+      // Falls sessionStorage leer ist: aus DB nachladen
       let role=(sessionStorage.getItem('role')||'').trim();
-      let school=(sessionStorage.getItem('school')||'').trim();
-      if(!role||!school){
+      let schoolGroup=(sessionStorage.getItem('school')||'').trim();
+      if(!role||!schoolGroup){
         const rdoc=await db.collection('rollen').doc(user.uid).get();
         if(rdoc.exists){
           const data=rdoc.data()||{};
           role = normalizeRole(data.role||'user');
-          school = (data.school||'').trim();
+          schoolGroup = (data.school||'').trim() || 'MASTER';
           sessionStorage.setItem('role', role);
-          sessionStorage.setItem('school', school);
+          sessionStorage.setItem('school', schoolGroup);
         }
       }
       await initLoad();
