@@ -20,12 +20,6 @@
     .actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
     button { background:#fff; color:#000; border:none; border-radius:10px; padding:8px 12px; font-weight:bold; cursor:pointer; }
     button.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
-    pre { white-space:pre-wrap; background:#0c0c0c; border:1px solid #222; color:#ddd; padding:12px; border-radius:8px; max-height:320px; overflow:auto; font-size:12px; }
-    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
-    @media (max-width:800px){ .grid2 { grid-template-columns: 1fr; } }
-    .ok { color:var(--ok); } .err { color:var(--err); }
-
-    /* Passwort ändern */
     .form { display:grid; gap:10px; }
     .field { display:flex; flex-direction:column; gap:6px; }
     .field label { font-size:14px; color:var(--muted); }
@@ -35,6 +29,7 @@
     }
     .hint { font-size:13px; color:var(--muted); }
     .status { margin-top:8px; min-height:18px; }
+    .ok { color:var(--ok); } .err { color:var(--err); }
   </style>
 </head>
 <body>
@@ -52,28 +47,15 @@
     <div class="card">
       <h3>Login / Authentication</h3>
       <div class="kv">
-        <div class="muted">UID</div>          <div class="mono" id="uid">–</div>
-        <div class="muted">E-Mail</div>       <div class="mono" id="email">–</div>
-        <div class="muted">Verifiziert</div>  <div id="verified">–</div>
-        <div class="muted">Anzeigename</div>  <div id="displayName">–</div>
-        <div class="muted">Provider</div>     <div id="providers">–</div>
-        <div class="muted">Erstellt am</div>  <div id="created">–</div>
+        <div class="muted">UID</div>             <div class="mono" id="uid">–</div>
+        <div class="muted">E-Mail</div>          <div class="mono" id="email">–</div>
+        <div class="muted">Anzeigename</div>     <div id="displayName">–</div>
+        <div class="muted">Erstellt am</div>     <div id="created">–</div>
         <div class="muted">Letzte Anmeldung</div><div id="lastLogin">–</div>
-        <div class="muted">Foto-URL</div>     <div class="mono" id="photoURL">–</div>
+        <div class="muted">Rolle</div>           <div id="role">–</div>
+        <div class="muted">Schule</div>          <div id="school">–</div>
       </div>
-      <div class="actions" style="margin-top:10px">
-        <button id="copyUidBtn" class="ghost">UID kopieren</button>
-        <button id="copyEmailBtn" class="ghost">E-Mail kopieren</button>
-      </div>
-    </div>
-
-    <!-- Firestore-Daten -->
-    <div class="card">
-      <h3>Firestore – Daten zu meiner UID</h3>
-      <div class="muted" style="margin-bottom:8px">Es werden die Dokumente in den üblichen Collections gesucht: <span class="mono">rollen</span>, <span class="mono">users</span>, <span class="mono">profiles</span>, <span class="mono">personen</span>, <span class="mono">mitglieder</span>.</div>
-      <div id="fsContainer" class="grid2">
-        <!-- dynamisch befüllt: je Collection ein Kasten -->
-      </div>
+      <!-- Kopier-Buttons entfernt -->
     </div>
   </div>
 
@@ -111,12 +93,6 @@
       <div id="pwStatusAlt" class="status"></div>
     </div>
   </div>
-
-  <!-- Rohdaten / Debug -->
-  <div class="card" style="margin-top:16px;">
-    <h3>Rohdaten</h3>
-    <pre id="rawAuth">Lade …</pre>
-  </div>
 </div>
 
 <!-- Firebase -->
@@ -131,18 +107,16 @@
   const auth = firebase.auth();
   const db   = firebase.firestore();
 
+  // Elemente
   const uidEl = document.getElementById('uid');
   const emailEl = document.getElementById('email');
-  const verifiedEl = document.getElementById('verified');
   const displayNameEl = document.getElementById('displayName');
-  const providersEl = document.getElementById('providers');
   const createdEl = document.getElementById('created');
   const lastLoginEl = document.getElementById('lastLogin');
-  const photoURLEl = document.getElementById('photoURL');
-  const rawAuthEl = document.getElementById('rawAuth');
-  const fsContainer = document.getElementById('fsContainer');
+  const roleEl = document.getElementById('role');
+  const schoolEl = document.getElementById('school');
 
-  /* Passwort ändern UI */
+  // Passwort-UI
   const pwInfo = document.getElementById('pwInfo');
   const pwForm = document.getElementById('pwForm');
   const pwResetOnly = document.getElementById('pwResetOnly');
@@ -155,44 +129,28 @@
   const pwStatus = document.getElementById('pwStatus');
   const pwStatusAlt = document.getElementById('pwStatusAlt');
 
-  const collectionsToCheck = ['rollen','users','profiles','personen','mitglieder'];
-
   function setKV(el, val){ el.textContent = (val===undefined || val===null || val==='') ? '–' : String(val); }
-
-  function cardForCollection(name, data){
-    const wrap = document.createElement('div');
-    wrap.className = 'card';
-    wrap.style.padding = '12px';
-    wrap.innerHTML = `<h3 style="margin:0 0 8px">${name}</h3>
-      ${data ? `<pre>${JSON.stringify(data, null, 2)}</pre>` : '<div class="muted">Kein Dokument gefunden.</div>'}`;
-    return wrap;
-  }
-
-  async function loadFirestoreDocs(uid){
-    fsContainer.innerHTML = '';
-    for (const coll of collectionsToCheck){
-      try{
-        const snap = await db.collection(coll).doc(uid).get();
-        const data = snap.exists ? snap.data() : null;
-        fsContainer.appendChild(cardForCollection(coll, data));
-      }catch(e){
-        const errBox = document.createElement('div');
-        errBox.className = 'card';
-        errBox.style.padding = '12px';
-        errBox.innerHTML = `<h3 style="margin:0 0 8px">${coll}</h3>
-          <div class="err">Fehler beim Laden: ${e.message || e}</div>`;
-        fsContainer.appendChild(errBox);
-      }
-    }
-  }
-
-  function hasPasswordProvider(u){
-    return (u.providerData||[]).some(p => p.providerId === 'password');
-  }
-
+  function hasPasswordProvider(u){ return (u.providerData||[]).some(p => p.providerId === 'password'); }
   function setStatus(el, text, ok=false){
     el.textContent = text || '';
     el.className = 'status ' + (ok ? 'ok' : (text ? 'err' : ''));
+  }
+
+  async function loadRoleSchool(uid){
+    try{
+      const snap = await db.collection('rollen').doc(uid).get();
+      if (snap.exists){
+        const data = snap.data() || {};
+        setKV(roleEl, data.role || data.rolle || '–');
+        setKV(schoolEl, (data.school || data.schule || '').toString().trim() || '–');
+      }else{
+        setKV(roleEl, '–');
+        setKV(schoolEl, '–');
+      }
+    }catch(e){
+      setKV(roleEl, '–');
+      setKV(schoolEl, '–');
+    }
   }
 
   async function loadAll(){
@@ -202,28 +160,15 @@
     // Auth-Infos
     setKV(uidEl, u.uid);
     setKV(emailEl, u.email);
-    setKV(verifiedEl, u.emailVerified ? '✓ verifiziert' : '✗ nicht verifiziert');
     setKV(displayNameEl, u.displayName || '');
-    const providerList = (u.providerData||[]).map(p=>p.providerId).join(', ') || '–';
-    setKV(providersEl, providerList);
     setKV(createdEl, u.metadata?.creationTime || '');
     setKV(lastLoginEl, u.metadata?.lastSignInTime || '');
-    setKV(photoURLEl, u.photoURL || '');
 
-    rawAuthEl.textContent = JSON.stringify({
-      uid: u.uid,
-      email: u.email,
-      emailVerified: u.emailVerified,
-      displayName: u.displayName,
-      providerData: (u.providerData||[]).map(p=>({ providerId:p.providerId, uid:p.uid, email:p.email })),
-      metadata: u.metadata,
-      phoneNumber: u.phoneNumber,
-      photoURL: u.photoURL
-    }, null, 2);
+    // Rolle / Schule aus Firestore
+    await loadRoleSchool(u.uid);
 
     // Passwort-Form je nach Provider
-    const isPwd = hasPasswordProvider(u);
-    if (isPwd){
+    if (hasPasswordProvider(u)){
       pwInfo.textContent = 'Hier kannst du dein Passwort direkt ändern. Aus Sicherheitsgründen ist dein aktuelles Passwort erforderlich.';
       pwForm.style.display = 'grid';
       pwResetOnly.style.display = 'none';
@@ -232,19 +177,10 @@
       pwForm.style.display = 'none';
       pwResetOnly.style.display = 'block';
     }
-
-    // Firestore-Daten zur UID
-    await loadFirestoreDocs(u.uid);
   }
 
   // Events
   document.getElementById('refreshBtn').onclick = loadAll;
-  document.getElementById('copyUidBtn').onclick = async ()=>{
-    try{ await navigator.clipboard.writeText(uidEl.textContent); }catch(_){}
-  };
-  document.getElementById('copyEmailBtn').onclick = async ()=>{
-    try{ await navigator.clipboard.writeText(emailEl.textContent); }catch(_){}
-  };
 
   // Passwort ändern
   changePwBtn?.addEventListener('click', async ()=>{
@@ -267,8 +203,7 @@
       oldPw.value = newPw.value = newPw2.value = '';
       setStatus(pwStatus, 'Passwort erfolgreich geändert.', true);
     }catch(e){
-      // Häufige Fehler besser verständlich machen
-      const code = e && e.code || '';
+      const code = e?.code || '';
       let msg = e?.message || String(e);
       if (code === 'auth/wrong-password') msg = 'Das aktuelle Passwort ist falsch.';
       if (code === 'auth/too-many-requests') msg = 'Zu viele Versuche. Bitte später erneut probieren.';
@@ -277,7 +212,7 @@
     }
   });
 
-  // Reset-Link (auch verfügbar, falls jemand altes Passwort vergessen hat)
+  // Reset-Link senden
   async function sendResetEmailCommon(targetEl){
     setStatus(targetEl, '');
     const u = auth.currentUser;
