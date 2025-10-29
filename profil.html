@@ -30,6 +30,16 @@
     .hint { font-size:13px; color:var(--muted); }
     .status { margin-top:8px; min-height:18px; }
     .ok { color:var(--ok); } .err { color:var(--err); }
+
+    /* Inline-Edit für Anzeigename */
+    .inline-edit { display:flex; gap:8px; align-items:center; }
+    .inline-edit input {
+      flex:1;
+      background:#000; color:#fff; border:1px solid var(--border);
+      border-radius:10px; padding:8px 10px;
+      min-width:0;
+    }
+    .status-line { grid-column: 1 / -1; font-size:13px; }
   </style>
 </head>
 <body>
@@ -49,13 +59,24 @@
       <div class="kv">
         <div class="muted">UID</div>             <div class="mono" id="uid">–</div>
         <div class="muted">E-Mail</div>          <div class="mono" id="email">–</div>
-        <div class="muted">Anzeigename</div>     <div id="displayName">–</div>
+
+        <div class="muted">Anzeigename</div>
+        <div>
+          <div class="inline-edit">
+            <input id="displayNameInput" type="text" placeholder="Anzeigename eingeben" />
+            <button id="saveDisplayNameBtn">Speichern</button>
+          </div>
+          <div id="displayNameStatus" class="status"></div>
+        </div>
+
         <div class="muted">Erstellt am</div>     <div id="created">–</div>
         <div class="muted">Letzte Anmeldung</div><div id="lastLogin">–</div>
         <div class="muted">Rolle</div>           <div id="role">–</div>
         <div class="muted">Schule</div>          <div id="school">–</div>
+
+        <!-- Statuszeile für allgemeine Meldungen (optional) -->
+        <div class="status-line" id="generalStatus"></div>
       </div>
-      <!-- Kopier-Buttons entfernt -->
     </div>
   </div>
 
@@ -110,11 +131,16 @@
   // Elemente
   const uidEl = document.getElementById('uid');
   const emailEl = document.getElementById('email');
-  const displayNameEl = document.getElementById('displayName');
   const createdEl = document.getElementById('created');
   const lastLoginEl = document.getElementById('lastLogin');
   const roleEl = document.getElementById('role');
   const schoolEl = document.getElementById('school');
+
+  // Anzeigename editierbar
+  const displayNameInput = document.getElementById('displayNameInput');
+  const saveDisplayNameBtn = document.getElementById('saveDisplayNameBtn');
+  const displayNameStatus = document.getElementById('displayNameStatus');
+  const generalStatus = document.getElementById('generalStatus');
 
   // Passwort-UI
   const pwInfo = document.getElementById('pwInfo');
@@ -130,11 +156,11 @@
   const pwStatusAlt = document.getElementById('pwStatusAlt');
 
   function setKV(el, val){ el.textContent = (val===undefined || val===null || val==='') ? '–' : String(val); }
-  function hasPasswordProvider(u){ return (u.providerData||[]).some(p => p.providerId === 'password'); }
   function setStatus(el, text, ok=false){
     el.textContent = text || '';
     el.className = 'status ' + (ok ? 'ok' : (text ? 'err' : ''));
   }
+  function hasPasswordProvider(u){ return (u.providerData||[]).some(p => p.providerId === 'password'); }
 
   async function loadRoleSchool(uid){
     try{
@@ -160,14 +186,14 @@
     // Auth-Infos
     setKV(uidEl, u.uid);
     setKV(emailEl, u.email);
-    setKV(displayNameEl, u.displayName || '');
+    displayNameInput.value = u.displayName || '';
     setKV(createdEl, u.metadata?.creationTime || '');
     setKV(lastLoginEl, u.metadata?.lastSignInTime || '');
 
-    // Rolle / Schule aus Firestore
+    // Rolle / Schule
     await loadRoleSchool(u.uid);
 
-    // Passwort-Form je nach Provider
+    // Passwort-Bereich je nach Provider
     if (hasPasswordProvider(u)){
       pwInfo.textContent = 'Hier kannst du dein Passwort direkt ändern. Aus Sicherheitsgründen ist dein aktuelles Passwort erforderlich.';
       pwForm.style.display = 'grid';
@@ -179,8 +205,30 @@
     }
   }
 
-  // Events
   document.getElementById('refreshBtn').onclick = loadAll;
+
+  // Anzeigename speichern
+  saveDisplayNameBtn.addEventListener('click', async ()=>{
+    setStatus(displayNameStatus, '');
+    const u = auth.currentUser;
+    if (!u) { setStatus(displayNameStatus, 'Nicht eingeloggt.'); return; }
+
+    const val = (displayNameInput.value || '').trim();
+    if (val.length < 2){
+      setStatus(displayNameStatus, 'Bitte mindestens 2 Zeichen eingeben.');
+      return;
+    }
+
+    try{
+      await u.updateProfile({ displayName: val });
+      // Optional: Wenn ihr auch ein Profil-Dokument pflegt, hier mit updaten:
+      // try { await db.collection('profiles').doc(u.uid).set({ displayName: val }, { merge:true }); } catch(_){}
+      setStatus(displayNameStatus, 'Anzeigename gespeichert.', true);
+    }catch(e){
+      const msg = e?.message || String(e);
+      setStatus(displayNameStatus, msg);
+    }
+  });
 
   // Passwort ändern
   changePwBtn?.addEventListener('click', async ()=>{
@@ -188,9 +236,9 @@
     const u = auth.currentUser;
     if (!u) { setStatus(pwStatus, 'Nicht eingeloggt.'); return; }
 
-    const oldVal = oldPw.value.trim();
-    const newVal = newPw.value.trim();
-    const newVal2 = newPw2.value.trim();
+    const oldVal = (oldPw.value || '').trim();
+    const newVal = (newPw.value || '').trim();
+    const newVal2 = (newPw2.value || '').trim();
 
     if (!oldVal){ setStatus(pwStatus, 'Bitte aktuelles Passwort eingeben.'); return; }
     if (newVal.length < 6){ setStatus(pwStatus, 'Neues Passwort muss mindestens 6 Zeichen haben.'); return; }
