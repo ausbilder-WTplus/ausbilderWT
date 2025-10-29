@@ -7,16 +7,16 @@
   <style>
     :root { --bg:#000; --text:#fff; --card:#111; --border:#333; --muted:#bbb; --ok:#4ade80; --warn:#facc15; --err:#f87171; }
     * { box-sizing: border-box; }
-    body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;}
-    .wrap{max-width:820px;margin:0 auto;padding:16px;}
-    h1{margin:8px 0 16px;}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;}
-    video{width:100%;max-height:520px;background:#000;border-radius:12px;border:1px solid #222;}
-    button{background:#fff;color:#000;border:none;border-radius:10px;padding:10px 14px;font-weight:bold;cursor:pointer;}
-    button[disabled]{opacity:.6;cursor:not-allowed;}
-    select{background:#000;color:#fff;border:1px solid var(--border);border-radius:10px;padding:8px;}
-    .muted{color:var(--muted);} .ok{color:var(--ok);} .warn{color:var(--warn);} .err{color:var(--err);}
-    pre{white-space:pre-wrap;font-size:12px;color:#ccc;background:#0c0c0c;padding:8px;border-radius:8px;border:1px solid #222;max-height:200px;overflow:auto;}
+    body { margin:0; background:var(--bg); color:var(--text); font-family: Arial, Helvetica, sans-serif; }
+    .wrap { max-width:820px; margin:0 auto; padding:16px; }
+    h1 { margin:8px 0 16px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+    video { width:100%; max-height:520px; background:#000; border-radius:12px; border:1px solid #222; }
+    button { background:#fff; color:#000; border:none; border-radius:10px; padding:10px 14px; font-weight:bold; cursor:pointer; }
+    button[disabled]{ opacity:.6; cursor:not-allowed; }
+    select { background:#000; color:#fff; border:1px solid var(--border); border-radius:10px; padding:8px; }
+    .muted { color:var(--muted); } .ok{ color:var(--ok);} .warn{ color:var(--warn);} .err{ color:var(--err);}
+    pre { white-space:pre-wrap; font-size:12px; color:#ccc; background:#0c0c0c; padding:8px; border-radius:8px; border:1px solid #222; max-height:200px; overflow:auto; }
   </style>
 </head>
 <body>
@@ -31,8 +31,12 @@
       <span id="msg" class="muted" style="margin-left:auto">Bereit</span>
     </div>
     <video id="video" autoplay playsinline muted></video>
+    <div id="hint" class="muted" style="margin-top:8px;font-size:14px">
+      Hinweis: Erfordert <strong>HTTPS</strong> (oder <code>localhost</code>). Bei iOS erst nach Button-Klick möglich.
+    </div>
     <details class="card" style="margin-top:12px;">
       <summary>Diagnose</summary>
+      <div id="diag"></div>
       <pre id="log"></pre>
     </details>
   </div>
@@ -49,70 +53,220 @@
 <script src="firebase-config.js"></script>
 <script src="attendance-shared.js"></script>
 
-<!-- ZXing lokal + Fallback -->
+<!-- ZXing dynamisch laden: lokal -> unpkg -> jsDelivr -->
 <script>
-async function ensureZXingLoaded(){
-  if(window.ZXingBrowser) return;
-  const sources=[
-    './vendor/zxing/zxing-browser.min.js',
-    'https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js',
-    'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js'
-  ];
-  for(const src of sources){
-    try{
-      await new Promise((res,rej)=>{
-        const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(src);document.head.appendChild(s);
+  async function ensureZXingLoaded() {
+    if (window.ZXingBrowser) return;
+    function load(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src; s.async = true;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Script load error: ' + src));
+        document.head.appendChild(s);
       });
-      if(window.ZXingBrowser) return;
-    }catch(e){console.warn('ZXing Ladefehler',src);}
+    }
+    const candidates = [
+      './vendor/zxing/zxing-browser.min.js',
+      'https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js',
+      'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js'
+    ];
+    let lastErr = null;
+    for (const src of candidates) {
+      try { await load(src); if (window.ZXingBrowser) return; }
+      catch (e) { lastErr = e; console.warn('ZXing Load Error', src, e.message); }
+    }
+    throw lastErr || new Error('ZXing konnte nicht geladen werden.');
   }
-  throw new Error('ZXing konnte nicht geladen werden.');
-}
 </script>
 
 <script>
-(async()=>{
-  const log=(...a)=>{console.log(...a);document.getElementById('log').textContent+=a.join(' ')+'\n';};
-  const {auth,db,parseQrPayload}=window._att||{};
-  if(!auth||!db){alert('Firebase nicht initialisiert');return;}
-  await new Promise(r=>auth.onAuthStateChanged(u=>{if(!u)location.href='index.html';else r();}));
-  const msg=document.getElementById('msg'),video=document.getElementById('video'),startBtn=document.getElementById('startBtn'),stopBtn=document.getElementById('stopBtn'),cameraSelect=document.getElementById('cameraSelect');
-  const setMsg=(t,c='muted')=>{msg.className=c;msg.textContent=t;}
-  await ensureZXingLoaded();log('ZXing geladen:',!!window.ZXingBrowser);
-  let reader,controls,running=false;
+(async () => {
+  // ---------- Utils ----------
+  const L = document.getElementById('log');
+  const log = (...a)=>{ console.log(...a); L.textContent += a.map(x=> (typeof x==='string'?x:JSON.stringify(x))).join(' ') + '\n'; };
+  const msgEl = document.getElementById("msg");
+  const setMsg = (t, cls='muted') => { msgEl.className=cls; msgEl.textContent=t; };
+
+  window.addEventListener('error', ev => { log('[window.onerror]', ev.error || ev.message || ev); });
+  log('[Diag] href=', location.href);
+  log('[Diag] secureContext=', (location.protocol === 'https:' || location.hostname === 'localhost'));
+  log('[Diag] mediaDevices=', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+
+  // ---------- Auth / Firebase ----------
+  const { auth, db, parseQrPayload } = window._att || {};
+  if (!auth || !db) { alert("Firebase nicht initialisiert."); location.href="index.html"; return; }
+  await new Promise(res => auth.onAuthStateChanged(u => { if (!u) location.href='index.html'; else res(); }));
+
+  // ---------- DOM ----------
+  const video = document.getElementById("video");
+  const startBtn = document.getElementById("startBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const cameraSelect = document.getElementById("cameraSelect");
+  const diag = document.getElementById("diag");
+
+  // ---------- State ----------
+  let reader=null, controls=null, running=false, lastTxt=null, lastAt=0;
+
+  // ---------- Hinweise ----------
+  if (location.protocol !== "https:" && location.hostname !== "localhost"){
+    setMsg("Kamera benötigt HTTPS oder localhost", "err");
+    log("Nicht sicherer Kontext:", location.href);
+  }
+  if (window !== window.top) {
+    log("In iframe ausgeführt – das iframe braucht allow=\"camera\"");
+  }
+  if (!('mediaDevices' in navigator) || !('getUserMedia' in navigator.mediaDevices)){
+    setMsg("Browser unterstützt getUserMedia nicht.", "err");
+    log("mediaDevices/getUserMedia nicht verfügbar");
+  }
+
+  async function ensurePermissionOnce() {
+    try {
+      const tmp = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      tmp.getTracks().forEach(t => t.stop());
+      log('Permission-Seed ok (Labels sichtbar).');
+    } catch(e) {
+      log('Permission-Seed: kein Zugriff (wird beim Start angefragt).', e && (e.name || e.message));
+    }
+  }
+
   async function listCameras(){
-    const devs=await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
-    cameraSelect.innerHTML='';devs.forEach((d,i)=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||'Kamera '+(i+1);cameraSelect.appendChild(o);});
-  }
-  await listCameras();
-  async function startScan(){
-    reader=new ZXingBrowser.BrowserMultiFormatReader();
-    const deviceId=cameraSelect.value||undefined;
-    running=true;
-    controls=await reader.decodeFromVideoDevice(deviceId,video,async(res,err,ctrls)=>{
-      if(res){
-        const txt=res.getText();log('QR:',txt);
-        const payload=parseQrPayload(txt);
-        if(!payload)return setMsg('Ungültiger QR','err');
-        const sref=db.collection('sessions').doc(payload.s);
-        const snap=await sref.get();
-        if(!snap.exists)return setMsg('Termin nicht gefunden','err');
-        const s=snap.data();
-        if(!s.open)return setMsg('Check-in geschlossen','err');
-        if(s.qrNonce!==payload.n)return setMsg('QR veraltet','err');
-        const u=auth.currentUser;
-        await sref.collection('checkins').doc(u.uid).set({
-          uid:u.uid,email:u.email,displayName:u.displayName,
-          checkedAt:firebase.firestore.FieldValue.serverTimestamp(),
-          userAgent:navigator.userAgent,nonce:payload.n
-        });
-        setMsg('Erfolgreich eingecheckt','ok');
+    try{
+      const devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+      cameraSelect.innerHTML='';
+      if (!devices.length){
+        cameraSelect.innerHTML='<option value="">Keine Kamera gefunden</option>';
+        return;
       }
-    });
-    startBtn.disabled=true;stopBtn.disabled=false;
+      devices.forEach((d,i)=>{
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Kamera ${i+1}`;
+        cameraSelect.appendChild(opt);
+      });
+      const back = [...devices].find(d => /back|rear|rück/i.test(d.label));
+      if (back) cameraSelect.value = back.deviceId;
+      log("Gefundene Kameras:", devices.map(d=>({id:d.deviceId,label:d.label})));
+    }catch(e){
+      log("Kameraliste Fehler:", e);
+      setMsg("Kameras nicht verfügbar", "err");
+    }
   }
-  async function stopScan(){running=false;controls?.stop?.();reader?.reset?.();startBtn.disabled=false;stopBtn.disabled=true;}
-  startBtn.onclick=startScan;stopBtn.onclick=stopScan;
+
+  async function startScan(){
+    try{
+      await stopScan();
+      reader = new ZXingBrowser.BrowserMultiFormatReader();
+      const deviceId = cameraSelect.value || undefined;
+      running = true;
+      setMsg("Scanner aktiv – halte den QR ins Bild", "warn");
+
+      controls = await reader.decodeFromVideoDevice(deviceId, video, async (result, err, ctrls) => {
+        if (!running) return;
+        if (!controls && ctrls) controls = ctrls;
+
+        if (result){
+          const txt = result.getText();
+          const now = Date.now();
+          if (txt === lastTxt && (now - lastAt) < 2000) return; // Debounce
+          lastTxt = txt; lastAt = now;
+
+          log("QR erkannt:", txt);
+          setMsg("QR erkannt! Prüfe…", "warn");
+          await onQrScanned(txt);
+        }
+        if (err && !(err instanceof ZXingBrowser.NotFoundException)){
+          log("ZXing Callback-Fehler:", err);
+        }
+      });
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      setMsg("Kamera läuft (Scan)", "ok");
+      log("ZXing gestartet.");
+    }catch(e){
+      log("Startfehler (ZXing):", e);
+      handleGUMError(e);
+      await stopScan();
+    }
+  }
+
+  async function stopScan(){
+    running = false;
+    try{ controls && controls.stop && controls.stop(); }catch(_){}
+    try{ reader && reader.reset && await reader.reset(); }catch(_){}
+    controls = null; reader = null;
+    try { video.srcObject = null; } catch(_){}
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    setMsg("Bereit","muted");
+  }
+
+  function handleGUMError(e){
+    const name = (e && (e.name || e.message || e.code)) || 'Unknown';
+    let hint = '';
+    if (/NotAllowed/i.test(name)) hint = "Zugriff verweigert: Kamera in Website-Einstellungen zulassen.";
+    else if (/NotFound|Overconstrained/i.test(name)) hint = "Keine passende Kamera gefunden. Andere Kamera wählen.";
+    else if (/NotReadable/i.test(name)) hint = "Kamera belegt. Andere App schließen.";
+    else if (/Security|NotSupported/i.test(name)) hint = "Unsichere Umgebung. HTTPS oder localhost verwenden.";
+    else hint = "Allgemeiner Kamerafehler.";
+    setMsg(`Kamera konnte nicht gestartet werden (${name}). ${hint}`, "err");
+    diag.innerHTML = `<div><strong>Fehler:</strong> ${name}</div><div>${hint}</div>`;
+  }
+
+  async function onQrScanned(text){
+    try{
+      const payload = parseQrPayload && parseQrPayload(text);
+      if (!payload) { setMsg("Ungültiger QR-Code", "err"); return; }
+      const { s: sessionId, n: nonce } = payload;
+
+      const sref = db.collection("sessions").doc(sessionId);
+      const snap = await sref.get();
+      if (!snap.exists) { setMsg("Termin nicht gefunden", "err"); return; }
+      const s = snap.data();
+      if (!s.open) { setMsg("Check-in ist geschlossen", "err"); return; }
+      if (s.qrNonce !== nonce) { setMsg("QR ist veraltet", "err"); return; }
+
+      const u = auth.currentUser;
+      await sref.collection("checkins").doc(u.uid).set({
+        uid: u.uid,
+        email: u.email || "",
+        displayName: u.displayName || "",
+        checkedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        userAgent: navigator.userAgent,
+        nonce
+      }, { merge: true });
+
+      setMsg("Erfolgreich eingecheckt 🎉","ok");
+      // Optional: nach Erfolg stoppen:
+      // setTimeout(stopScan, 800);
+    }catch(e){
+      log("Check-in Fehler:", e);
+      setMsg("Check-in fehlgeschlagen: " + (e.message||e), "err");
+    }
+  }
+
+  startBtn.onclick = startScan;
+  stopBtn.onclick = stopScan;
+  cameraSelect.onchange = async () => { if (running) await startScan(); };
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopScan(); });
+  window.addEventListener('pagehide', stopScan);
+  window.addEventListener('beforeunload', stopScan);
+
+  // ---------- Init ----------
+  try {
+    await ensureZXingLoaded();
+    log('[Diag] ZXingBrowser?', typeof window.ZXingBrowser, window.ZXingBrowser ? 'ok' : 'MISSING');
+  } catch (e) {
+    log('ZXing Ladevorgang fehlgeschlagen:', e && (e.message || e));
+    setMsg('ZXing konnte nicht geladen werden. Prüfe lokale Datei/CDN.', 'err');
+    return;
+  }
+  await ensurePermissionOnce();
+  await listCameras();
+
 })();
 </script>
 </body>
