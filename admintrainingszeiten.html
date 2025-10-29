@@ -57,7 +57,6 @@
     <div class="top-bar">
       <h1>Trainingszeiten</h1>
       <div class="controls">
-        <!-- immer sichtbar, Auswahl ist Pflicht -->
         <select id="schoolSelect" class="school" title="Schule wählen"></select>
         <button id="editSchemaBtn" class="btn ghost" style="display:none">✏️ Struktur bearbeiten</button>
         <button id="addDayBtn" class="btn ghost" style="display:none">➕ Tag</button>
@@ -100,7 +99,6 @@
     if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r)) r='si-fu';
     return r;
   };
-
   function splitSchoolsString(str){ if(!str) return []; return String(str).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean); }
   async function getDocFlexible(col,key){
     const base=(key??'').trim();
@@ -123,7 +121,7 @@
   let STATE = {
     role: 'user',
     school: '',              // ausgewählte Schule (leer = noch keine Auswahl)
-    groupKey: '',            // Gruppe aus sessionStorage.school (z.B. MASTER / Degenhardt / …)
+    groupKey: '',            // Gruppe aus rollen.school (z. B. MASTER / Degenhardt)
     canEdit: false,
     editMode: false,
     schema: null,            // { slots: [...] }
@@ -166,17 +164,31 @@
 
   // ---------- Schema/Belegung laden ----------
   async function ensureSchemaExists(school){
-    const snap = await REF_SCHEMA(school).get();
-    if (!snap.exists) await REF_SCHEMA(school).set(DEFAULT_SCHEMA);
+    const ref = REF_SCHEMA(school);
+    const snap = await ref.get();
+    if (snap.exists) return true;
+    try{
+      await ref.set(DEFAULT_SCHEMA);
+      console.info(`[schema] default erzeugt für ${school}`);
+      return true;
+    }catch(e){
+      console.error(`[schema] anlegen fehlgeschlagen für ${school}`, e);
+      return false;
+    }
   }
+
   async function loadAllForSchool(school){
-    await ensureSchemaExists(school);
+    const ok = await ensureSchemaExists(school);
+    if(!ok){
+      $('schedule').innerHTML = `<div class="hint">Konnte die Struktur für <b>${school}</b> nicht initialisieren. 
+        Prüfe Firestore-Regeln/Schreibrechte für <code>trainingszeiten/${school}/trainingszeiten/schema</code>.</div>`;
+    }
     const [schemaSnap, belegSnap] = await Promise.all([
       REF_SCHEMA(school).get(),
-      REF_BELEG(school).get(),
+      REF_BELEG(school).get().catch(e=>({exists:false, data:()=>({})})),
     ]);
-    const schema = schemaSnap.data() || { slots: [] };
-    const beleg  = belegSnap.exists ? (belegSnap.data()||{}) : {};
+    const schema = (schemaSnap && schemaSnap.exists) ? (schemaSnap.data()||{slots:[]}) : {slots:[]};
+    const beleg  = (belegSnap && belegSnap.exists) ? (belegSnap.data()||{}) : {};
     return { schema, beleg };
   }
 
@@ -194,10 +206,7 @@
         ? 'Struktur bearbeiten: Tage, Zeiten, Bezeichnung und Kapazität. Änderungen erst nach <b>„Struktur speichern“</b> wirksam.'
         : 'Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern. Trainer sehen die Einträge, können sie aber nicht ändern.';
 
-    if (!STATE.school) {
-      // noch keine Schule gewählt
-      return;
-    }
+    if (!STATE.school) return;
 
     for(const group of (schema.slots || [])){
       const day = document.createElement('div');
@@ -320,7 +329,7 @@
   }
 
   async function doSave(){
-    if(!STATE.school) return; // ohne Schule kein Save
+    if(!STATE.school){ console.warn('save aborted: no school selected'); return; }
     const data={};
     document.querySelectorAll('input.name').forEach(inp=>{
       const sid=inp.dataset.slotId;
@@ -348,7 +357,7 @@
 
   // ---------- Schema speichern ----------
   async function saveSchema(){
-    if(!STATE.school) return;
+    if(!STATE.school){ console.warn('save schema aborted: no school'); return; }
     try{
       const cleaned = { slots: (STATE.schema.slots||[])
         .map(d=>({ day:(d.day||'').trim(),
@@ -369,8 +378,7 @@
       for(const d of cleaned.slots){
         for(const s of d.slots){
           const id = `${slug(d.day)}__${slug(s.time)}`;
-          newIds.add(id);
-          capById[id]=Math.max(1, Number(s.cap||6));
+          newIds.add(id); capById[id]=Math.max(1, Number(s.cap||6));
         }
       }
       const trimmed = {};
@@ -427,7 +435,6 @@
     const sel = $('schoolSelect');
     sel.disabled = true;
 
-    // Gruppe (so nennst du sie in sessionStorage.school); MASTER = alle
     const groupKey = (sessionStorage.getItem('school')||'').trim() || 'MASTER';
     STATE.groupKey = groupKey;
 
@@ -440,11 +447,11 @@
     if(groupKey.toUpperCase()==='MASTER') sel.appendChild(mk('MASTER','MASTER (alle)'));
     list.forEach(name=> sel.appendChild(mk(name.toLowerCase(), name)));
 
-    // Wenn zuvor gültige Schule gewählt war, setzen – sonst leerlassen
+    // letzte gültige Auswahl
     const last = (sessionStorage.getItem('activeSchool')||'').toLowerCase();
     if(last && (last==='master' || list.map(s=>s.toLowerCase()).includes(last))){
       sel.value = last;
-      STATE.school = last==='master' ? '' : last; // MASTER = keine konkrete Schule
+      STATE.school = last==='master' ? '' : last;
     } else {
       sel.value = '';
       STATE.school = '';
@@ -453,18 +460,22 @@
     sel.disabled = false;
 
     sel.onchange = async ()=>{
-      const v = sel.value;
+      const v = (sel.value||'').toLowerCase();           // IDs immer klein
       sessionStorage.setItem('activeSchool', v);
       STATE.school = (v && v!=='master') ? v : '';
       STATE.editMode = false;
       toggleSchemaButtons();
-      await initLoad(true); // reload
+      try{
+        await initLoad(true);
+      }catch(err){
+        console.error('initLoad error after school change:', err);
+        root.innerHTML = `<div class="hint">Fehler beim Laden: ${err?.message||err}. Prüfe Firestore-Rules.</div>`;
+      }
     };
   }
 
   // ---------- Init ----------
   async function initLoad(fromPicker=false){
-    // Rolle/Gruppenanzeige
     const role = normalizeRole(sessionStorage.getItem('role')||'');
     const group = (sessionStorage.getItem('school')||'').trim() || 'MASTER';
     STATE.role = role || 'user';
@@ -476,27 +487,34 @@
     if(!fromPicker) await setupSchoolPicker();
 
     if(!STATE.school){
-      // keine konkrete Schule gewählt → Hinweis + Buttons aus
       root.innerHTML = '<div class="hint">Bitte oben zuerst eine Schule wählen.</div>';
       toggleSchemaButtons();
       return;
     }
 
-    // Daten der gewählten Schule laden
-    const { schema, beleg } = await loadAllForSchool(STATE.school);
-    STATE.schema = schema;
-    STATE.belegung = beleg;
-    STATE.editMode = false;
+    try{
+      const { schema, beleg } = await loadAllForSchool(STATE.school);
+      STATE.schema = schema;
+      STATE.belegung = beleg;
+      STATE.editMode = false;
 
-    renderView();
-    toggleSchemaButtons();
+      if (!Array.isArray(schema.slots) || schema.slots.length===0){
+        root.innerHTML = `<div class="hint">Für <b>${STATE.school}</b> ist noch keine Struktur hinterlegt.</div>`;
+      } else {
+        renderView();
+      }
+      toggleSchemaButtons();
+    }catch(e){
+      console.error('initLoad read error', e);
+      root.innerHTML = `<div class="hint">Fehler beim Laden: ${e?.message||e}</div>`;
+    }
   }
 
   // ---------- Auth ----------
   auth.onAuthStateChanged(async user=>{
     if(!user){location.href="index.html";return;}
     try{
-      // Falls sessionStorage leer ist: aus DB nachladen
+      // Falls Session leer: Rolle & Gruppe aus DB
       let role=(sessionStorage.getItem('role')||'').trim();
       let schoolGroup=(sessionStorage.getItem('school')||'').trim();
       if(!role||!schoolGroup){
