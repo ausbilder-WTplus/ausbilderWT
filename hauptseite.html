@@ -21,7 +21,7 @@
       padding:16px;display:flex;flex-direction:column;gap:8px;
       position:sticky;top:0;height:calc(100vh - 80px);overflow-y:auto;
       transition:transform .3s ease;
-      margin-top:56px; /* <<< NEU: Abstand unter dem Header für den Toggle-Button */
+      margin-top:56px; /* Abstand unter dem Header für den Toggle-Button */
     }
     /* Ein-/Ausblenden via Transform (sanftes Herausfahren nach links) */
     nav.hidden{ transform:translateX(-100%); }
@@ -160,7 +160,7 @@
       <span>Check-In</span>
     </button>
 
-    <button onclick="location.href='passwort-aendern.html'">🔑 Passwort ändern</button>
+    <!-- HINWEIS: Der „Passwort ändern“-Button wurde hier ENTFERNT -->
 
     <div class="logout-container">
       <button class="settings-btn" id="settingsBtn">⚙️ Einstellungen</button>
@@ -205,9 +205,7 @@ auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 function setupToggle(tId,sId){const t=document.getElementById(tId),s=document.getElementById(sId);if(!t||!s)return;t.onclick=()=>s.classList.toggle('open');}
 setupToggle('trainerToggle','trainerSub');setupToggle('adminToggle','adminSub');
 
-/* Toggle-Button Logik:
-   - Desktop: Klasse 'nav-hidden' toggeln (versteckt nav)
-   - Mobil:   Klasse 'nav-visible' toggeln (zeigt nav trotz Media Query) */
+/* Toggle-Button Logik */
 document.getElementById('toggleNavBtn').onclick=()=>{
   const body=document.body;
   if (window.matchMedia('(max-width:700px)').matches){
