@@ -24,6 +24,17 @@
     .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
     @media (max-width:800px){ .grid2 { grid-template-columns: 1fr; } }
     .ok { color:var(--ok); } .err { color:var(--err); }
+
+    /* Passwort ändern */
+    .form { display:grid; gap:10px; }
+    .field { display:flex; flex-direction:column; gap:6px; }
+    .field label { font-size:14px; color:var(--muted); }
+    .field input {
+      background:#000; color:#fff; border:1px solid var(--border);
+      border-radius:10px; padding:10px 12px;
+    }
+    .hint { font-size:13px; color:var(--muted); }
+    .status { margin-top:8px; min-height:18px; }
   </style>
 </head>
 <body>
@@ -66,6 +77,41 @@
     </div>
   </div>
 
+  <!-- Passwort ändern -->
+  <div class="card" style="margin-top:16px;">
+    <h3>🔑 Passwort ändern</h3>
+    <div id="pwInfo" class="hint" style="margin-bottom:8px;"></div>
+    <div id="pwForm" class="form" style="display:none;">
+      <div class="field">
+        <label for="oldPw">Aktuelles Passwort</label>
+        <input id="oldPw" type="password" autocomplete="current-password" placeholder="••••••••" />
+      </div>
+      <div class="field">
+        <label for="newPw">Neues Passwort</label>
+        <input id="newPw" type="password" autocomplete="new-password" placeholder="mind. 6 Zeichen" />
+      </div>
+      <div class="field">
+        <label for="newPw2">Neues Passwort (Wiederholung)</label>
+        <input id="newPw2" type="password" autocomplete="new-password" placeholder="nochmal eingeben" />
+      </div>
+      <div class="actions" style="margin-top:4px;">
+        <button id="changePwBtn">Passwort ändern</button>
+        <button id="sendResetBtn" class="ghost">Reset-Link per E-Mail senden</button>
+      </div>
+      <div id="pwStatus" class="status"></div>
+    </div>
+    <div id="pwResetOnly" style="display:none;">
+      <div class="hint" style="margin-bottom:8px;">
+        Dein Konto nutzt derzeit keinen E-Mail/Passwort-Login (z. B. Google/Apple). Du kannst dir einen
+        <b>Passwort-Reset-Link</b> an deine E-Mail senden, um ein Passwort zu setzen.
+      </div>
+      <div class="actions">
+        <button id="sendResetOnlyBtn">Reset-Link per E-Mail senden</button>
+      </div>
+      <div id="pwStatusAlt" class="status"></div>
+    </div>
+  </div>
+
   <!-- Rohdaten / Debug -->
   <div class="card" style="margin-top:16px;">
     <h3>Rohdaten</h3>
@@ -95,6 +141,19 @@
   const photoURLEl = document.getElementById('photoURL');
   const rawAuthEl = document.getElementById('rawAuth');
   const fsContainer = document.getElementById('fsContainer');
+
+  /* Passwort ändern UI */
+  const pwInfo = document.getElementById('pwInfo');
+  const pwForm = document.getElementById('pwForm');
+  const pwResetOnly = document.getElementById('pwResetOnly');
+  const oldPw = document.getElementById('oldPw');
+  const newPw = document.getElementById('newPw');
+  const newPw2 = document.getElementById('newPw2');
+  const changePwBtn = document.getElementById('changePwBtn');
+  const sendResetBtn = document.getElementById('sendResetBtn');
+  const sendResetOnlyBtn = document.getElementById('sendResetOnlyBtn');
+  const pwStatus = document.getElementById('pwStatus');
+  const pwStatusAlt = document.getElementById('pwStatusAlt');
 
   const collectionsToCheck = ['rollen','users','profiles','personen','mitglieder'];
 
@@ -127,6 +186,15 @@
     }
   }
 
+  function hasPasswordProvider(u){
+    return (u.providerData||[]).some(p => p.providerId === 'password');
+  }
+
+  function setStatus(el, text, ok=false){
+    el.textContent = text || '';
+    el.className = 'status ' + (ok ? 'ok' : (text ? 'err' : ''));
+  }
+
   async function loadAll(){
     const u = auth.currentUser;
     if (!u) { location.replace('index.html'); return; }
@@ -136,7 +204,8 @@
     setKV(emailEl, u.email);
     setKV(verifiedEl, u.emailVerified ? '✓ verifiziert' : '✗ nicht verifiziert');
     setKV(displayNameEl, u.displayName || '');
-    setKV(providersEl, (u.providerData||[]).map(p=>p.providerId).join(', ') || '–');
+    const providerList = (u.providerData||[]).map(p=>p.providerId).join(', ') || '–';
+    setKV(providersEl, providerList);
     setKV(createdEl, u.metadata?.creationTime || '');
     setKV(lastLoginEl, u.metadata?.lastSignInTime || '');
     setKV(photoURLEl, u.photoURL || '');
@@ -152,6 +221,18 @@
       photoURL: u.photoURL
     }, null, 2);
 
+    // Passwort-Form je nach Provider
+    const isPwd = hasPasswordProvider(u);
+    if (isPwd){
+      pwInfo.textContent = 'Hier kannst du dein Passwort direkt ändern. Aus Sicherheitsgründen ist dein aktuelles Passwort erforderlich.';
+      pwForm.style.display = 'grid';
+      pwResetOnly.style.display = 'none';
+    }else{
+      pwInfo.textContent = 'Dein Login verwendet keinen Passwort-Provider (z. B. Google/Apple). Du kannst dir einen Reset-Link senden lassen, um ein Passwort zu setzen.';
+      pwForm.style.display = 'none';
+      pwResetOnly.style.display = 'block';
+    }
+
     // Firestore-Daten zur UID
     await loadFirestoreDocs(u.uid);
   }
@@ -164,6 +245,52 @@
   document.getElementById('copyEmailBtn').onclick = async ()=>{
     try{ await navigator.clipboard.writeText(emailEl.textContent); }catch(_){}
   };
+
+  // Passwort ändern
+  changePwBtn?.addEventListener('click', async ()=>{
+    setStatus(pwStatus, '');
+    const u = auth.currentUser;
+    if (!u) { setStatus(pwStatus, 'Nicht eingeloggt.'); return; }
+
+    const oldVal = oldPw.value.trim();
+    const newVal = newPw.value.trim();
+    const newVal2 = newPw2.value.trim();
+
+    if (!oldVal){ setStatus(pwStatus, 'Bitte aktuelles Passwort eingeben.'); return; }
+    if (newVal.length < 6){ setStatus(pwStatus, 'Neues Passwort muss mindestens 6 Zeichen haben.'); return; }
+    if (newVal !== newVal2){ setStatus(pwStatus, 'Die neuen Passwörter stimmen nicht überein.'); return; }
+
+    try{
+      const cred = firebase.auth.EmailAuthProvider.credential(u.email, oldVal);
+      await u.reauthenticateWithCredential(cred);
+      await u.updatePassword(newVal);
+      oldPw.value = newPw.value = newPw2.value = '';
+      setStatus(pwStatus, 'Passwort erfolgreich geändert.', true);
+    }catch(e){
+      // Häufige Fehler besser verständlich machen
+      const code = e && e.code || '';
+      let msg = e?.message || String(e);
+      if (code === 'auth/wrong-password') msg = 'Das aktuelle Passwort ist falsch.';
+      if (code === 'auth/too-many-requests') msg = 'Zu viele Versuche. Bitte später erneut probieren.';
+      if (code === 'auth/requires-recent-login') msg = 'Sicherheitsbedingt bitte neu einloggen und erneut versuchen.';
+      setStatus(pwStatus, msg);
+    }
+  });
+
+  // Reset-Link (auch verfügbar, falls jemand altes Passwort vergessen hat)
+  async function sendResetEmailCommon(targetEl){
+    setStatus(targetEl, '');
+    const u = auth.currentUser;
+    if (!u || !u.email){ setStatus(targetEl, 'Kein eingeloggter Nutzer oder keine E-Mail gefunden.'); return; }
+    try{
+      await auth.sendPasswordResetEmail(u.email);
+      setStatus(targetEl, 'Reset-Link wurde an ' + u.email + ' gesendet.', true);
+    }catch(e){
+      setStatus(targetEl, e?.message || String(e));
+    }
+  }
+  sendResetBtn?.addEventListener('click', ()=>sendResetEmailCommon(pwStatus));
+  sendResetOnlyBtn?.addEventListener('click', ()=>sendResetEmailCommon(pwStatusAlt));
 
   // Auth-Flow
   auth.onAuthStateChanged(u => { if (!u) location.replace('index.html'); else loadAll(); });
