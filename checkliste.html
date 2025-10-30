@@ -14,16 +14,14 @@
       min-height:100vh; display:flex; flex-direction:column;
     }
 
-    /* Header: 3 Logos */
+    /* ===== Header (3 Logos, wie die anderen Seiten) ===== */
     .header{
       display:flex; justify-content:space-between; align-items:center;
       padding:12px 16px; gap:12px;
     }
-    .header img{ height:64px; width:auto; object-fit:contain; }
-    .header .master-label{
-      flex:1; text-align:center; font-size:42px; font-weight:bold; letter-spacing:4px;
-    }
-    @media (max-width:750px){ .header img{ height:44px; } .header .master-label{ font-size:30px; } }
+    .header img{ height:80px; width:auto; object-fit:contain; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
 
     /* Inhalt */
     .wrap{
@@ -35,12 +33,8 @@
       border-radius:12px; border:1px solid #222; padding:14px 16px;
       box-shadow:0 4px 16px rgba(0,0,0,.35);
     }
-    h2{
-      margin:8px 0 10px; font-size:20px; text-align:center;
-    }
-    .section-title{
-      margin:12px 0 8px; text-align:center; font-weight:bold; font-size:18px;
-    }
+    h2{ margin:8px 0 10px; font-size:20px; text-align:center; }
+    .section-title{ margin:12px 0 8px; text-align:center; font-weight:bold; font-size:18px; }
 
     /* Liste & Zeilen */
     .list{ list-style:none; padding:0; margin:0; }
@@ -49,17 +43,11 @@
       padding:10px 8px; border-radius:10px;
     }
     .row + .row{ border-top:1px solid #1d1d1d; }
-    .label{
-      flex:1; text-align:left; font-size:16px; color:#f3f3f3;
-    }
+    .label{ flex:1; text-align:left; font-size:16px; color:#f3f3f3; }
 
     /* Toggle (Switch) */
-    .switch{
-      position:relative; width:52px; height:28px; flex:0 0 auto;
-    }
-    .switch input{
-      position:absolute; opacity:0; width:0; height:0;
-    }
+    .switch{ position:relative; width:52px; height:28px; flex:0 0 auto; }
+    .switch input{ position:absolute; opacity:0; width:0; height:0; }
     .slider{
       position:absolute; inset:0; border-radius:14px;
       background:#3a3a3a; transition:all .2s ease;
@@ -74,11 +62,9 @@
     .switch input:checked + .slider{
       background:rgba(46,204,113,.25); box-shadow: inset 0 0 0 2px var(--accent);
     }
-    .switch input:checked + .slider::before{
-      transform:translateX(24px); background:var(--accent);
-    }
+    .switch input:checked + .slider::before{ transform:translateX(24px); background:var(--accent); }
 
-    /* Home-Button */
+    /* Home-Button (identisch) */
     .home-btn{
       position:fixed; left:18px; bottom:18px; border:none;
       background:#fff; color:#000; border-radius:50%;
@@ -93,9 +79,9 @@
 <body>
   <!-- Header -->
   <div class="header" id="header">
-    <img id="logo-left" src="pluslogo.png" alt="WT Plus Logo">
-    <img id="logo-center" src="faust.jpg" alt="Mitte Logo">
-    <img id="logo-right" src="melsungen.jpg" alt="EWTO Schule Melsungen Logo">
+    <img id="logo-left" src="pluslogo.png" alt="Logo links">
+    <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
   </div>
 
   <!-- Inhalt -->
@@ -127,46 +113,47 @@
   <script src="firebase-config.js"></script>
 
   <script>
-    // ---- Firebase init (zentral, genau einmal) ----
-    firebase.initializeApp(window.firebaseConfig);
+    // ---- Firebase init (nur einmal) ----
+    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-    // ---- Guard + Schul-Header (Logos / MASTER) ----
+    // ---- Header-Logik: Logos je Schule (ohne MASTER-Text) ----
+    function preloadAndSet(imgEl, url){
+      const test = new Image();
+      test.onload = () => { imgEl.src = url; };
+      test.onerror = () => {}; // Fallback: ursprüngliches src bleibt
+      test.src = url;
+    }
+    async function resolveSchool(user){
+      // activeSchool hat Vorrang, dann school aus Session, sonst Firestore, dann 'master'
+      let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').trim().toLowerCase();
+      if (!school) {
+        try {
+          const snap = await db.collection('rollen').doc(user.uid).get();
+          if (snap.exists) {
+            school = (snap.data().school || '').toString().trim().toLowerCase();
+            if (school) sessionStorage.setItem('school', school);
+          }
+        } catch(e){ console.error('[resolveSchool]', e); }
+      }
+      return school || 'master';
+    }
+    function applyLogosForSchool(school){
+      if (school === 'master') return; // Standardbilder behalten
+      const base = `logos/${school}`;
+      preloadAndSet(document.getElementById('logo-center'), `${base}/logo-center.jpg`);
+      preloadAndSet(document.getElementById('logo-left'),   `${base}/logo-left.jpg`);
+      preloadAndSet(document.getElementById('logo-right'),  `${base}/logo-right.jpg`);
+    }
+
+    // ---- Auth-Guard + Header anwenden ----
     auth.onAuthStateChanged(async (u) => {
       if (!u) { location.href = "index.html"; return; }
-
       try {
-        let school = (sessionStorage.getItem('school') || '').toLowerCase();
-        if (!school) {
-          const snap = await db.collection('rollen').doc(u.uid).get();
-          if (snap.exists) {
-            school = (snap.data().school || '').toLowerCase();
-            sessionStorage.setItem('school', school);
-          }
-        }
-
-        const header = document.getElementById('header');
-        const logoLeft = document.getElementById('logo-left');
-        const logoCenter = document.getElementById('logo-center');
-        const logoRight = document.getElementById('logo-right');
-
-        function preloadAndSet(imgEl, url) {
-          const test = new Image();
-          test.onload = () => { imgEl.src = url; };
-          test.onerror = () => {}; // Fallback: ursprüngliches src bleibt
-          test.src = url;
-        }
-
-        if (school === 'master') {
-          header.innerHTML = '<div class="master-label">MASTER</div>';
-        } else if (school) {
-          const base = `logos/${school}`;
-          preloadAndSet(logoCenter, `${base}/logo-center.jpg`);
-          preloadAndSet(logoLeft,   `${base}/logo-left.jpg`);
-          preloadAndSet(logoRight,  `${base}/logo-right.jpg`);
-        }
+        const school = await resolveSchool(u);
+        applyLogosForSchool(school);
       } catch (e) {
         console.error('[Header/School]', e);
       }
@@ -210,9 +197,7 @@
       try { return JSON.parse(localStorage.getItem(key)) || fallback; }
       catch { return fallback; }
     }
-    function saveState(key, obj) {
-      localStorage.setItem(key, JSON.stringify(obj));
-    }
+    function saveState(key, obj) { localStorage.setItem(key, JSON.stringify(obj)); }
 
     // ---- Render-Funktion
     function renderList(container, items, stateKey, scopeKey) {
