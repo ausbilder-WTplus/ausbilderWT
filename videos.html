@@ -5,29 +5,70 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Videos</title>
   <style>
-    :root{--bg:#000;--text:#fff}
-    html,body{height:100%}
-    body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif}
-    .wrap{max-width:1100px;margin:24px auto;padding:0 12px}
-    h1{font-size:22px;margin:0 0 12px}
-    .frame{width:100%;height:78vh;border:0;border-radius:10px;background:#111}
-    .note{opacity:.8;font-size:14px;margin-top:8px}
-    .err{color:#ff9c9c}
+    :root{ --bg:#000; --text:#fff; }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0; background:var(--bg); color:var(--text);
+      font-family:Arial, Helvetica, sans-serif;
+      -webkit-font-smoothing:antialiased;
+      min-height:100vh; display:flex; flex-direction:column;
+    }
+
+    /* ===== Header (3 Logos, responsive – wie die anderen Seiten) ===== */
+    .header{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; gap:12px;
+    }
+    .header img{ height:80px; width:auto; object-fit:contain; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
+
+    /* ===== Inhalt ===== */
+    .wrap{ width:100%; max-width:1100px; margin:24px auto; padding:0 12px; }
+    h1{ font-size:22px; margin:0 0 12px; }
+    .frame{
+      width:100%; height:78vh; border:0; border-radius:10px; background:#111;
+      box-shadow:0 4px 16px rgba(0,0,0,.35);
+    }
+    .note{ opacity:.85; font-size:14px; margin-top:8px; }
+    .err{ color:#ff9c9c; }
+
+    /* ===== Home-Button (identisch) ===== */
+    .home-btn{
+      position:fixed; left:18px; bottom:18px;
+      border:none; background:#fff; color:#000;
+      border-radius:50%; padding:10px; cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    .home-btn img{ width:32px; height:32px; display:block; }
   </style>
 </head>
 <body>
+  <!-- Header mit Logos (Standardbilder als Fallback/Master) -->
+  <div class="header" id="header">
+    <img id="logo-left" src="pluslogo.png" alt="Logo links">
+    <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
+  </div>
+
   <div class="wrap">
     <h1 id="title">Videos</h1>
     <iframe id="videosFrame" class="frame" title="Videos"></iframe>
     <div id="msg" class="note"></div>
   </div>
 
+  <!-- Home-Button -->
+  <button class="home-btn" onclick="location.href='hauptseite.html'">
+    <img src="home.jpg" alt="Home">
+  </button>
+
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 
-  <!-- deine zentrale Config -->
+  <!-- zentrale Firebase-Config -->
   <script src="firebase-config.js"></script>
 
   <script>
@@ -41,32 +82,51 @@
     const title = document.getElementById('title');
     const msgEl = document.getElementById('msg');
 
-    // Varianten einer Doc-ID (robust gegen Groß-/Kleinschreibung)
+    // ------- Header/Logos (stabil, kein MASTER-Text-Umschalten) -------
+    function preloadAndSet(imgEl, url){
+      const test = new Image();
+      test.onload  = () => { imgEl.src = url; };
+      test.onerror = () => {}; // Fallback: ursprüngliches src bleibt
+      test.src = url;
+    }
+    async function resolveSchool(user){
+      // activeSchool hat Vorrang, dann school; sonst Firestore; dann 'master'
+      let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').trim().toLowerCase();
+      if (!school) {
+        try {
+          const snap = await db.collection('rollen').doc(user.uid).get();
+          if (snap.exists) {
+            school = (snap.data().school || '').toString().trim().toLowerCase();
+            if (school) sessionStorage.setItem('school', school);
+          }
+        } catch(e){ console.error('[resolveSchool]', e); }
+      }
+      return school || 'master';
+    }
+    function applyLogosForSchool(school){
+      if (school === 'master') return; // Standardbilder beibehalten
+      const base = `logos/${school}`;
+      preloadAndSet(document.getElementById('logo-center'), `${base}/logo-center.jpg`);
+      preloadAndSet(document.getElementById('logo-left'),   `${base}/logo-left.jpg`);
+      preloadAndSet(document.getElementById('logo-right'),  `${base}/logo-right.jpg`);
+    }
+
+    // ------- Videos-Logik -------
     function variantsForDocId(base){
       if (!base) return [];
       const b = String(base).trim();
       const cap = b.charAt(0).toUpperCase()+b.slice(1);
       return [b, b.toUpperCase(), b.toLowerCase(), cap];
     }
-
-    // Drive-URL → einbettbare URL
     function toEmbedUrl(url){
       if (!url) return '';
       if (url.includes('embeddedfolderview')) return url;
-
-      // Ordner-URL -> embeddedfolderview
       const folderMatch = url.match(/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([a-zA-Z0-9_-]+)/);
       if (folderMatch) return `https://drive.google.com/embeddedfolderview?id=${folderMatch[1]}#grid`;
-
-      // Datei-URL -> preview
       const fileMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
       if (fileMatch) return `https://drive.google.com/file/d/${fileMatch[1]}/preview`;
-
-      // Sonst unverändert
       return url;
     }
-
-    // Link (z. B. "videos") aus /links/{school} holen (ohne MASTER-Fallback)
     async function loadLinkForSchool(kind, school){
       const tries = [...new Set(variantsForDocId(school))];
       for (const id of tries){
@@ -81,19 +141,17 @@
       return null;
     }
 
-    // Start
+    // ------- Start -------
     auth.onAuthStateChanged(async user=>{
-      if(!user){ location.replace('index.html'); return; }
+      if (!user){ location.replace('index.html'); return; }
 
-      // aktive Schule aus deiner Hauptseite/Session
-      const active = (sessionStorage.getItem('activeSchool')
-                   || sessionStorage.getItem('school')
-                   || 'MASTER').trim();
+      const school = await resolveSchool(user);
+      applyLogosForSchool(school);
 
+      const active = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || 'MASTER').trim();
       title.textContent = `Videos – ${active.toUpperCase()}`;
 
-      // MASTER zeigt nichts: erst auf der Hauptseite eine Schule wählen
-      if (active.toUpperCase() === 'MASTER') {
+      if (active.toUpperCase() === 'MASTER'){
         frame.style.display = 'none';
         msgEl.innerHTML = '<span>Bitte zuerst auf der Hauptseite eine Schule auswählen.</span>';
         return;
@@ -107,6 +165,7 @@
         return;
       }
 
+      frame.style.display = 'block';
       frame.src = toEmbedUrl(res.url);
       msgEl.textContent = `Quelle: links/${res.docId} (Feld "videos")`;
     });
