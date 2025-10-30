@@ -67,7 +67,7 @@
       padding:10px;background:rgba(255,255,255,.05);}
     .ticker-inner{display:inline-block;white-space:nowrap;padding-left:100%;font-size:16px;}
     @keyframes scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
-    .ticker-inner.animate{animation:scroll linear infinite;animation-duration:12s;}
+    .ticker-inner.animate{animation:scroll linear infinite;}
 
     .calendar-wrap{margin:18px 0;width:100%;height:520px;display:none;}
     .calendar-wrap iframe{width:100%;height:100%;border:none;border-radius:8px;background:#fff;}
@@ -116,6 +116,7 @@
       <button onclick="location.href='registrierung.html'">🧾 Registrierung</button>
       <button onclick="location.href='session-admin.html'">🏋️‍♂️ Trainingstermin erstellen</button>
       <button id="planBtn">🗓️ Trainingsplan verwalten</button>
+      <button id="newsTickerBtn" style="display:none;">📰 Newsticker</button>
     </div>
 
     <button id="attendBtn" onclick="location.href='attend.html'">
@@ -155,10 +156,7 @@ if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
 const auth=firebase.auth(), db=firebase.firestore();
 auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-function setupToggle(tId,sId){
-  const t=document.getElementById(tId),s=document.getElementById(sId);
-  if(!t||!s)return; t.onclick=()=>s.classList.toggle('open');
-}
+function setupToggle(tId,sId){const t=document.getElementById(tId),s=document.getElementById(sId);if(!t||!s)return;t.onclick=()=>s.classList.toggle('open');}
 setupToggle('trainerToggle','trainerSub');
 setupToggle('adminToggle','adminSub');
 
@@ -174,7 +172,7 @@ document.getElementById('logoutBtn').onclick=async()=>{await auth.signOut();sess
 document.getElementById('profileBtn').onclick=()=>location.href='profil.html';
 document.getElementById('settingsBtn').onclick=()=>location.href='einstellungen.html';
 
-/* ---- Header-Logik: immer Logos aus logos/master, falls Schule fehlt ---- */
+/* ---- Header-Logik ---- */
 function preloadAndSet(img, url, fallback) {
   if (!img) return;
   const test = new Image();
@@ -183,21 +181,13 @@ function preloadAndSet(img, url, fallback) {
   img.style.opacity='0.3';
   test.src = url;
 }
-
-function applyHeaderBySchool(school) {
-  const left   = document.getElementById('logo-left');
-  const center = document.getElementById('logo-center');
-  const right  = document.getElementById('logo-right');
-
-  const masterBase = 'logos/master';
-  const base = school && school.toLowerCase() !== 'master'
-    ? `logos/${school.toLowerCase()}`
-    : masterBase;
-
-  // immer versuchen: erst Schul-Logos, dann Master-Fallback
-  preloadAndSet(left,   `${base}/logo-left.jpg`,   `${masterBase}/logo-left.jpg`);
-  preloadAndSet(center, `${base}/logo-center.jpg`, `${masterBase}/logo-center.jpg`);
-  preloadAndSet(right,  `${base}/logo-right.jpg`,  `${masterBase}/logo-right.jpg`);
+async function applyHeaderBySchool(school) {
+  const left=document.getElementById('logo-left'),center=document.getElementById('logo-center'),right=document.getElementById('logo-right');
+  const masterBase='logos/master';
+  const base=(school && school.toLowerCase()!=='master')?`logos/${school.toLowerCase()}`:masterBase;
+  preloadAndSet(left,`${base}/logo-left.jpg`,`${masterBase}/logo-left.jpg`);
+  preloadAndSet(center,`${base}/logo-center.jpg`,`${masterBase}/logo-center.jpg`);
+  preloadAndSet(right,`${base}/logo-right.jpg`,`${masterBase}/logo-right.jpg`);
 }
 
 /* -------- Firestore Helpers -------- */
@@ -251,6 +241,30 @@ async function setupCalendarForSchool(school){
   if(iframe){f.src=iframe;w.style.display='block';}else{f.src='about:blank';w.style.display='none';}
 }
 
+/* ===== Firestore NEWSTICKER ===== */
+let unsubscribeTicker=null;
+function renderTicker(data){
+  const el=document.getElementById('tickerInner');
+  if(!el)return;
+  const text=(data&&data.text)?String(data.text).trim():'Keine Daten gefunden';
+  const speed=Number.isFinite(data?.speed)?data.speed:Math.min(Math.max(text.length/6,8),30);
+  const active=(data?.active!==false);
+  el.textContent=active?text:'Newsticker deaktiviert';
+  el.classList.add('animate');
+  el.style.animationDuration=speed+'s';
+}
+async function startTickerListener(school){
+  const schKey=String(school||'MASTER').trim().toLowerCase();
+  const el=document.getElementById('tickerInner');
+  if(!el)return;
+  if(typeof unsubscribeTicker==='function'){unsubscribeTicker();unsubscribeTicker=null;}
+  const schoolDoc=db.collection('ticker').doc(schKey);
+  unsubscribeTicker=schoolDoc.onSnapshot(snap=>{
+    if(snap.exists){renderTicker(snap.data());}
+    else{db.collection('ticker').doc('master').get().then(fb=>{renderTicker(fb.exists?fb.data():null);});}
+  },_=>{db.collection('ticker').doc('master').get().then(fb=>{renderTicker(fb.exists?fb.data():null);});});
+}
+
 /* ===== Auth ===== */
 auth.onAuthStateChanged(async user=>{
   if(!user){location.replace('index.html');return;}
@@ -269,10 +283,13 @@ auth.onAuthStateChanged(async user=>{
   const pill=document.getElementById('activeRolePill');
   pill.textContent='Rolle: '+(role||'–');
   pill.style.display='inline-block';
-  if(['admin','si-fu'].includes(role)) document.getElementById('adminToggle').style.display='flex';
+  const isAdminLike=['admin','si-fu'].includes(role);
+  if(isAdminLike) document.getElementById('adminToggle').style.display='flex';
+  if(isAdminLike) document.getElementById('newsTickerBtn').style.display='block';
+  document.getElementById('newsTickerBtn').onclick=()=>location.href='newsticker.html';
 
   const planBtn=document.getElementById('planBtn');
-  if(['admin','si-fu'].includes(role)){
+  if(isAdminLike){
     planBtn.onclick=()=>{
       const active=sessionStorage.getItem('activeSchool')||(sessionStorage.getItem('school')||'MASTER');
       location.href=`admintrainingszeiten.html?school=${encodeURIComponent((active||'MASTER').toLowerCase())}`;
@@ -293,12 +310,12 @@ auth.onAuthStateChanged(async user=>{
   }
 
   chooseLbl.textContent=(active.toUpperCase()==='MASTER'?'MASTER':active);
-  applyHeaderBySchool(active);
-
+  await applyHeaderBySchool(active);
   await setLink('oneNoteBtn',active,['onenote','OneNote','OneNoteURL']);
   await setLink('templatesBtn',active,['vorlagen']);
   await setLink('driveBtn',active,['drive']);
   await setupCalendarForSchool(active);
+  startTickerListener(active);
 
   chooseBtn.onclick=()=>{
     const dlg=document.getElementById('chooseSchoolDlg');
@@ -323,26 +340,15 @@ document.addEventListener('click',async e=>{
     const v=s.value||'MASTER';
     sessionStorage.setItem('activeSchool',v.toLowerCase());
     document.getElementById('chooseSchoolLabel').textContent=(v.toUpperCase()==='MASTER'?'MASTER':v);
-    applyHeaderBySchool(v);
+    await applyHeaderBySchool(v);
     await setLink('oneNoteBtn',v,['onenote','OneNote','OneNoteURL']);
     await setLink('templatesBtn',v,['vorlagen']);
     await setLink('driveBtn',v,['drive']);
     await setupCalendarForSchool(v);
     document.getElementById('chooseSchoolDlg').style.display='none';
+    startTickerListener(v);
   }
 });
-
-/* Newsticker */
-const csvUrl="https://docs.google.com/spreadsheets/d/e/2PACX-1vTqv9vVFE1kHZdb48JLBpUd3uwsin78PVjCLEGDmUztI78RYSPstjAxUi0uuwV-34fe91G4SfuQHGsl/pub?output=csv";
-(async()=>{
-  try{
-    const r=await fetch(csvUrl);const t=await r.text();
-    const f=t.trim().split(/\r?\n/)[0]||'Keine Daten gefunden';
-    const el=document.getElementById('tickerInner');
-    el.textContent=f;const d=Math.min(Math.max(f.length/6,8),30);
-    el.classList.add('animate');el.style.animationDuration=d+'s';
-  }catch{document.getElementById('tickerInner').textContent='Fehler beim Laden';}
-})();
 </script>
 
 <div class="scope-dialog-backdrop" id="chooseSchoolDlg"

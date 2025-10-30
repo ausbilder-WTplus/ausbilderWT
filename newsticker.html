@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Newsticker – Admin</title>
+  <style>
+    :root {
+      --bg:#000; --text:#fff; --accent-bg:#fff; --accent-text:#000;
+      --card:#111; --border:#333; --muted:#aaa; --hover:#1a1a1a; --red:#f44;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+    header{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)}
+    header img{height:60px;object-fit:contain;transition:opacity .3s ease;}
+    main{display:flex;flex:1;min-height:0}
+    .content{flex:1;padding:24px;max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+    label{display:block;font-weight:bold;margin-bottom:6px}
+    textarea{width:100%;min-height:140px;background:#000;color:#fff;border:1px solid var(--border);border-radius:10px;padding:12px;resize:vertical}
+    input[type="number"]{width:120px;background:#000;color:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+    .row{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+    .btn{background:var(--accent-bg);color:var(--accent-text);border:none;padding:10px 16px;border-radius:10px;font-weight:bold;cursor:pointer}
+    .btn.ghost{background:transparent;color:#fff;border:1px solid var(--border)}
+    .muted{color:var(--muted);font-size:14px}
+    .pill{align-self:flex-end;background:#0b0b0b;border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-size:13px}
+    .ticker-preview{overflow:hidden;border-radius:8px;border:1px solid var(--border);padding:10px;background:rgba(255,255,255,.05)}
+    .ticker-inner{display:inline-block;white-space:nowrap;padding-left:100%}
+    @keyframes scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
+  </style>
+</head>
+<body>
+  <header>
+    <img id="logo-left" src="logos/master/logo-left.jpg" alt="Logo links">
+    <img id="logo-center" src="logos/master/logo-center.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="logos/master/logo-right.jpg" alt="Logo rechts">
+  </header>
+
+  <main>
+    <div class="content">
+      <div class="row" style="justify-content:space-between">
+        <button class="btn ghost" onclick="location.href='index.html'">← Zurück</button>
+        <span id="schoolPill" class="pill">Schule: –</span>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h2 style="margin:0">📰 Newsticker bearbeiten</h2>
+          <label class="row" style="font-weight:normal">
+            <input type="checkbox" id="activeInput" style="transform:scale(1.2)"/>
+            <span>Aktiv</span>
+          </label>
+        </div>
+
+        <div style="margin-top:12px">
+          <label for="textInput">Text</label>
+          <textarea id="textInput" placeholder="Dein Lauftext…"></textarea>
+          <div class="row" style="margin-top:10px">
+            <label for="speedInput" style="font-weight:normal">Geschwindigkeit (Sek.):</label>
+            <input id="speedInput" type="number" min="6" max="60" step="1" value="14"/>
+            <span class="muted">Leer lassen → automatisch nach Textlänge</span>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px">
+          <button class="btn ghost" id="resetBtn">Zurücksetzen</button>
+          <button class="btn" id="saveBtn">Speichern</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h3 style="margin:0">Vorschau</h3>
+          <span class="muted">entspricht Anzeige im Dashboard</span>
+        </div>
+        <div class="ticker-preview" style="margin-top:10px">
+          <div id="previewInner" class="ticker-inner">—</div>
+        </div>
+      </div>
+
+      <p class="muted">Zuletzt geändert: <span id="updatedLabel">–</span></p>
+    </div>
+  </main>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script>
+  // Init
+  if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+  const auth=firebase.auth(), db=firebase.firestore();
+  auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+  // Helpers (aus deiner Hauptseite übernommen)
+  function preloadAndSet(img, url, fallback) {
+    if (!img) return;
+    const test = new Image();
+    test.onload = () => { img.src = url; img.style.opacity='1'; };
+    test.onerror = () => { if (fallback) img.src = fallback; };
+    img.style.opacity='0.3';
+    test.src = url;
+  }
+  async function applyHeaderBySchool(school) {
+    const left   = document.getElementById('logo-left');
+    const center = document.getElementById('logo-center');
+    const right  = document.getElementById('logo-right');
+    const masterBase = 'logos/master';
+    const base = (school && school.toLowerCase() !== 'master')
+      ? `logos/${school.toLowerCase()}`
+      : masterBase;
+    preloadAndSet(left,   `${base}/logo-left.jpg`,   `${masterBase}/logo-left.jpg`);
+    preloadAndSet(center, `${base}/logo-center.jpg`, `${masterBase}/logo-center.jpg`);
+    preloadAndSet(right,  `${base}/logo-right.jpg`,  `${masterBase}/logo-right.jpg`);
+  }
+  const normalize=r=>{
+    r=(r||'').toLowerCase();
+    if(['administrator','admins','adminstrator'].includes(r))r='admin';
+    if(['trainer/in','trainerin','coach'].includes(r))r='trainer';
+    if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r))r='si-fu';
+    return r;
+  };
+  function normalizeSchoolKey(s){ return String(s||'MASTER').trim().toLowerCase(); }
+
+  // UI refs
+  const textInput = document.getElementById('textInput');
+  const speedInput = document.getElementById('speedInput');
+  const activeInput = document.getElementById('activeInput');
+  const previewInner = document.getElementById('previewInner');
+  const updatedLabel = document.getElementById('updatedLabel');
+  const schoolPill = document.getElementById('schoolPill');
+
+  function updatePreview(){
+    const txt = (activeInput.checked ? (textInput.value||'') : 'Newsticker deaktiviert') || '—';
+    previewInner.textContent = txt;
+    previewInner.style.animation='none'; // reset trick
+    previewInner.offsetHeight; // reflow
+    let speed = parseFloat(speedInput.value);
+    if(!isFinite(speed)) speed = Math.min(Math.max(txt.length/6,8),30);
+    const dur = Math.max(6, Math.min(60, speed));
+    previewInner.style.animation = `scroll linear infinite`;
+    previewInner.style.animationDuration = dur + 's';
+  }
+
+  textInput.addEventListener('input', updatePreview);
+  speedInput.addEventListener('input', updatePreview);
+  activeInput.addEventListener('change', updatePreview);
+
+  /* Auth Gate + Daten laden */
+  let currentSchool='master', currentDocRef=null, unsub=null;
+
+  auth.onAuthStateChanged(async user=>{
+    if(!user){location.replace('index.html');return;}
+    let role=normalize(sessionStorage.getItem('role')),
+        school=(sessionStorage.getItem('school')||'').trim();
+    if(!role||!school){
+      const p=await db.collection('rollen').doc(user.uid).get();
+      if(p.exists){
+        const d=p.data(); role=normalize(d.role); school=(d.school||'').trim();
+        sessionStorage.setItem('role',role); sessionStorage.setItem('school',school);
+      }
+    }
+    if(!['admin','si-fu'].includes(role)){
+      alert('Kein Zugriff. Diese Seite ist nur für Admin/Si-Fu.');
+      location.replace('index.html'); return;
+    }
+
+    // aktive Schule bestimmen
+    const active = (sessionStorage.getItem('activeSchool') || school || 'MASTER');
+    currentSchool = normalizeSchoolKey(active);
+    schoolPill.textContent = 'Schule: ' + (currentSchool.toUpperCase()==='MASTER'?'MASTER':currentSchool);
+    await applyHeaderBySchool(currentSchool);
+
+    // Doc-Ref
+    currentDocRef = db.collection('ticker').doc(currentSchool);
+
+    // Live laden
+    if(typeof unsub==='function'){unsub();unsub=null;}
+    unsub = currentDocRef.onSnapshot(snap=>{
+      const data = snap.exists ? snap.data() : {};
+      textInput.value = data.text || '';
+      activeInput.checked = (data.active !== false);
+      speedInput.value = (Number.isFinite(data.speed)? data.speed : '');
+      updatedLabel.textContent = data.updatedAt?.toDate ? data.updatedAt.toDate().toLocaleString() : '–';
+      updatePreview();
+    }, err=>{
+      console.error(err);
+      alert('Fehler beim Laden des Newstickers.');
+    });
+  });
+
+  // Aktionen
+  document.getElementById('resetBtn').onclick=()=>{ if(currentDocRef) currentDocRef.get().then(s=>{
+    const data = s.exists ? s.data() : {};
+    textInput.value = data.text || '';
+    activeInput.checked = (data.active !== false);
+    speedInput.value = (Number.isFinite(data.speed)? data.speed : '');
+    updatedLabel.textContent = data.updatedAt?.toDate ? data.updatedAt.toDate().toLocaleString() : '–';
+    updatePreview();
+  }); };
+
+  document.getElementById('saveBtn').onclick=async ()=>{
+    if(!currentDocRef) return;
+    const payload = {
+      text: String(textInput.value||'').trim(),
+      active: !!activeInput.checked,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    const v = parseFloat(speedInput.value);
+    if(Number.isFinite(v)) payload.speed = Math.max(6, Math.min(60, v));
+    else payload.speed = firebase.firestore.FieldValue.delete(); // auf „auto“ zurücksetzen
+
+    try{
+      await currentDocRef.set(payload, {merge:true});
+      alert('Gespeichert ✅');
+    }catch(e){
+      console.error(e);
+      alert('Speichern fehlgeschlagen.');
+    }
+  };
+
+  // erste Vorschau initialisieren
+  updatePreview();
+  </script>
+</body>
+</html>
