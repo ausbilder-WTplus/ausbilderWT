@@ -83,7 +83,6 @@
   <script src="firebase-config.js"></script>
 
   <script>
-  // ---------- Firebase Init ----------
   if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
   const auth = firebase.auth();
   const db   = firebase.firestore();
@@ -120,21 +119,18 @@
   // ---------- State ----------
   let STATE = {
     role: 'user',
-    school: '',              // ausgewählte Schule (leer = noch keine Auswahl)
-    groupKey: '',            // Gruppe aus rollen.school (z. B. MASTER / Degenhardt)
+    school: '',
+    groupKey: '',
     canEdit: false,
     editMode: false,
-    schema: null,            // { slots: [...] }
-    belegung: {},            // { slotId: [names] }
+    schema: null,
+    belegung: {},
   };
 
-  // ---------- Firestore Refs ----------
-  // trainingszeiten/{school}/trainingszeiten/{schema|belegung}
   const COL = (school) => db.collection('trainingszeiten').doc(school).collection('trainingszeiten');
   const REF_SCHEMA = (school) => COL(school).doc('schema');
   const REF_BELEG  = (school) => COL(school).doc('belegung');
 
-  // ---------- Default-Schema ----------
   const DEFAULT_SCHEMA = {
     slots: [
       { day: "Montag", slots: [
@@ -147,148 +143,85 @@
         { time: "18:30-19:15", what: "Jugendliche 8-12 Jahre", cap: 6 },
         { time: "19:30-21:00", what: "Erwachsene ab 13 Jahre", cap: 6 },
       ]},
-      { day: "Donnerstag", slots: [
-        { time: "16:30-17:15", what: "Minis ab 4 Jahre", cap: 6 },
-        { time: "17:30-18:15", what: "Kids 5-7 Jahre", cap: 6 },
-        { time: "18:45-19:45", what: "ChiKung", cap: 6 },
-      ]},
     ]
   };
 
-  // ---------- Util ----------
-  function padN(arr, n){
-    const out = Array.isArray(arr) ? arr.slice(0, n) : [];
-    while(out.length<n) out.push("");
-    return out;
-  }
+  function padN(arr, n){ const out = Array.isArray(arr) ? arr.slice(0, n) : []; while(out.length<n) out.push(""); return out; }
 
-  // ---------- Schema/Belegung laden ----------
   async function ensureSchemaExists(school){
     const ref = REF_SCHEMA(school);
     const snap = await ref.get();
     if (snap.exists) return true;
-    try{
-      await ref.set(DEFAULT_SCHEMA);
-      console.info(`[schema] default erzeugt für ${school}`);
-      return true;
-    }catch(e){
-      console.error(`[schema] anlegen fehlgeschlagen für ${school}`, e);
-      return false;
-    }
+    try{ await ref.set(DEFAULT_SCHEMA); return true; }catch(e){ console.error(e); return false; }
   }
 
   async function loadAllForSchool(school){
-    const ok = await ensureSchemaExists(school);
-    if(!ok){
-      $('schedule').innerHTML = `<div class="hint">Konnte die Struktur für <b>${school}</b> nicht initialisieren. 
-        Prüfe Firestore-Regeln/Schreibrechte für <code>trainingszeiten/${school}/trainingszeiten/schema</code>.</div>`;
-    }
+    await ensureSchemaExists(school);
     const [schemaSnap, belegSnap] = await Promise.all([
       REF_SCHEMA(school).get(),
       REF_BELEG(school).get().catch(e=>({exists:false, data:()=>({})})),
     ]);
-    const schema = (schemaSnap && schemaSnap.exists) ? (schemaSnap.data()||{slots:[]}) : {slots:[]};
-    const beleg  = (belegSnap && belegSnap.exists) ? (belegSnap.data()||{}) : {};
+    const schema = (schemaSnap.exists ? schemaSnap.data() : {slots:[]});
+    const beleg  = (belegSnap.exists ? belegSnap.data() : {});
     return { schema, beleg };
   }
 
-  // ---------- Rendering ----------
   const root = $('schedule');
 
+  // ---------- Render View ----------
   function renderView(){
     root.innerHTML = "";
-
-    const { schema, beleg, canEdit, editMode } = STATE;
+    const { schema, canEdit, editMode } = STATE;
+    const beleg = STATE.belegung || {};
 
     $('hint').innerHTML = !STATE.school
-      ? 'Bitte oben zuerst eine Schule wählen. Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern.'
+      ? 'Bitte oben zuerst eine Schule wählen.'
       : editMode
-        ? 'Struktur bearbeiten: Tage, Zeiten, Bezeichnung und Kapazität. Änderungen erst nach <b>„Struktur speichern“</b> wirksam.'
-        : 'Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern. Trainer sehen die Einträge, können sie aber nicht ändern.';
+        ? 'Struktur bearbeiten.'
+        : 'Nur <b>Admin</b> &amp; <b>Si-Fu</b> können Namen und Struktur ändern.';
 
     if (!STATE.school) return;
 
-    for(const group of (schema.slots || [])){
+    for (const group of (schema.slots || [])) {
       const day = document.createElement('div');
       day.className = 'day';
 
-      // Überschrift Tag
       const h2 = document.createElement('h2');
       if (editMode && canEdit){
         const dayInput = document.createElement('input');
         dayInput.value = group.day || '';
-        dayInput.placeholder = 'Tag';
         dayInput.oninput = ()=>{ group.day = dayInput.value; renderView(); };
         h2.appendChild(dayInput);
 
         const addSlotBtn = document.createElement('button');
         addSlotBtn.className='btn ghost';
         addSlotBtn.textContent='➕ Slot';
-        addSlotBtn.onclick = ()=>{
-          group.slots = group.slots || [];
-          group.slots.push({ time:'', what:'', cap:6 });
-          renderView();
-        };
+        addSlotBtn.onclick = ()=>{ group.slots.push({ time:'', what:'', cap:6 }); renderView(); };
         h2.appendChild(addSlotBtn);
-
-        const delDayBtn = document.createElement('button');
-        delDayBtn.className='btn danger';
-        delDayBtn.textContent='🗑️ Tag';
-        delDayBtn.onclick=()=>{
-          STATE.schema.slots = STATE.schema.slots.filter(d=>d!==group);
-          renderView();
-        };
-        h2.appendChild(delDayBtn);
       } else {
         h2.textContent = group.day || '—';
       }
       day.appendChild(h2);
 
-      for(const slot of (group.slots||[])){
+      for (const slot of (group.slots || [])) {
         const id = `${slug(group.day)}__${slug(slot.time)}`;
         const cap = Math.max(1, Number(slot.cap||6));
         const row = document.createElement('div');
         row.className = 'slot';
 
-        // Info / Editline
         const info = document.createElement('div');
         info.className = 'info';
-        if (editMode && canEdit){
-          const line = document.createElement('div');
-          line.className='editline';
-          const inWhat = document.createElement('input'); inWhat.placeholder='Bezeichnung'; inWhat.value = slot.what||'';
-          const inTime = document.createElement('input'); inTime.placeholder='Zeit (z.B. 17:30-18:15)'; inTime.value = slot.time||'';
-          const inCap  = document.createElement('input'); inCap.type='number'; inCap.min='1'; inCap.max='20'; inCap.value=cap; inCap.style.width='90px'; inCap.title='Kapazität';
-          inWhat.oninput=()=>{ slot.what=inWhat.value; renderView(); };
-          inTime.oninput=()=>{ slot.time=inTime.value; renderView(); };
-          inCap.oninput =()=>{ slot.cap = Math.max(1, Number(inCap.value||6)); renderView(); };
+        const label = document.createElement('div');
+        label.className='label';
+        label.innerHTML=`<span class="daychip">${group.day}</span><span class="sep">–</span><span>${slot.what}</span><span class="sep">–</span><span>${slot.time}</span>`;
+        info.appendChild(label);
 
-          const delBtn=document.createElement('button'); delBtn.className='btn danger'; delBtn.textContent='🗑️ Slot';
-          delBtn.onclick=()=>{
-            group.slots = group.slots.filter(s=>s!==slot);
-            renderView();
-          };
-
-          line.append('Bezeichnung:', inWhat, 'Zeit:', inTime, 'Plätze:', inCap, delBtn);
-          info.appendChild(line);
-        } else {
-          const label=document.createElement('div');
-          label.className='label';
-          label.innerHTML = `<span class="daychip">${group.day||''}</span>
-                             <span class="sep">–</span>
-                             <span class="what">${slot.what || ""}</span>
-                             <span class="sep">–</span>
-                             <span class="time">${slot.time||''}</span>`;
-          info.appendChild(label);
-        }
-
-        // Eingabefelder
         const field=document.createElement('div');
         field.className='field';
         field.style.gridTemplateColumns = `repeat(${cap}, minmax(120px,1fr))`;
         const current = padN(beleg[id], cap);
 
-        for(let i=0;i<cap;i++){
+        for (let i=0;i<cap;i++){
           const input=document.createElement('input');
           input.type='text';
           input.placeholder=`Name ${i+1}`;
@@ -303,23 +236,18 @@
           field.appendChild(input);
         }
 
-        // Status
         const status=document.createElement('div');
         status.className='status';
         status.id=`st_${id}`;
         status.textContent=' ';
-
-        row.appendChild(info);
-        row.appendChild(field);
-        row.appendChild(status);
+        row.appendChild(info); row.appendChild(field); row.appendChild(status);
         day.appendChild(row);
       }
-
       root.appendChild(day);
     }
   }
 
-  // ---------- Speichern der Belegung ----------
+  // ---------- Save ----------
   let saveTimer=null;
   function scheduleSave(slotId){
     clearTimeout(saveTimer);
@@ -327,211 +255,56 @@
     if(st){st.textContent='speichern…';st.classList.remove('ok');}
     saveTimer=setTimeout(doSave,400);
   }
-
   async function doSave(){
-    if(!STATE.school){ console.warn('save aborted: no school selected'); return; }
     const data={};
     document.querySelectorAll('input.name').forEach(inp=>{
       const sid=inp.dataset.slotId;
       const idx=+inp.dataset.index;
       data[sid]=data[sid]||[];
-      data[sid][idx]= (inp.value||'').trim();
+      data[sid][idx]=(inp.value||'').trim();
     });
-
     try{
       await REF_BELEG(STATE.school).set(data,{merge:false});
-      STATE.belegung = data;
+      STATE.belegung=data;
       Object.keys(data).forEach(sid=>{
         const st=$(`st_${sid}`);
         if(st){st.textContent='gespeichert';st.classList.add('ok');}
       });
     }catch(e){
-      console.error("Speichern fehlgeschlagen:",e);
-      const msg=(e&&e.code)?e.code:(e&&e.message)?e.message:'Fehler';
+      console.error(e);
       Object.keys(data).forEach(sid=>{
-        const st=$(`st_${sid}`);
-        if(st){st.textContent='Fehler: '+msg;st.classList.remove('ok');}
+        const st=$(`st_${sid}`); if(st){st.textContent='Fehler';}
       });
     }
   }
 
-  // ---------- Schema speichern ----------
-  async function saveSchema(){
-    if(!STATE.school){ console.warn('save schema aborted: no school'); return; }
-    try{
-      const cleaned = { slots: (STATE.schema.slots||[])
-        .map(d=>({ day:(d.day||'').trim(),
-                   slots:(d.slots||[]).map(s=>({
-                     time:(s.time||'').trim(),
-                     what:(s.what||'').trim(),
-                     cap: Math.max(1, Number(s.cap||6))
-                   })).filter(s=>s.time||s.what) }))
-        .filter(d=>d.day && d.slots.length>0)
-      };
-      await REF_SCHEMA(STATE.school).set(cleaned,{merge:false});
-      STATE.schema = cleaned;
-      STATE.editMode=false;
-
-      // Belegung auf gültige Slots + Kapazitäten trimmen
-      const newIds = new Set();
-      const capById = {};
-      for(const d of cleaned.slots){
-        for(const s of d.slots){
-          const id = `${slug(d.day)}__${slug(s.time)}`;
-          newIds.add(id); capById[id]=Math.max(1, Number(s.cap||6));
-        }
-      }
-      const trimmed = {};
-      for(const id of newIds){
-        trimmed[id] = padN(STATE.belegung[id]||[], capById[id]);
-      }
-      await REF_BELEG(STATE.school).set(trimmed,{merge:false});
-      STATE.belegung = trimmed;
-
-      renderView();
-      toggleSchemaButtons();
-    }catch(e){
-      alert('Fehler beim Speichern der Struktur: '+(e?.message||e));
-    }
-  }
-
-  function toggleSchemaButtons(){
-    const hasSchool = !!STATE.school && STATE.school!=='master';
-    const showEditUI = STATE.canEdit && hasSchool;
-
-    $('editSchemaBtn').style.display   = (showEditUI && !STATE.editMode) ? 'inline-block' : 'none';
-    $('addDayBtn').style.display       = (showEditUI &&  STATE.editMode) ? 'inline-block' : 'none';
-    $('saveSchemaBtn').style.display   = (showEditUI &&  STATE.editMode) ? 'inline-block' : 'none';
-    $('cancelSchemaBtn').style.display = (showEditUI &&  STATE.editMode) ? 'inline-block' : 'none';
-  }
-
-  function enterEdit(){
-    if(!STATE.canEdit || !STATE.school) return;
-    STATE.editMode = true;
-    STATE._backup = JSON.parse(JSON.stringify(STATE.schema));
-    renderView();
-    toggleSchemaButtons();
-  }
-  function cancelEdit(){
-    if(!STATE.canEdit || !STATE.school) return;
-    STATE.editMode = false;
-    if(STATE._backup){ STATE.schema = STATE._backup; STATE._backup=null; }
-    renderView();
-    toggleSchemaButtons();
-  }
-
-  $('editSchemaBtn').onclick = enterEdit;
-  $('saveSchemaBtn').onclick = saveSchema;
-  $('cancelSchemaBtn').onclick = cancelEdit;
-  $('addDayBtn').onclick = ()=>{
-    if(!STATE.schema) STATE.schema={slots:[]};
-    STATE.schema.slots = STATE.schema.slots || [];
-    STATE.schema.slots.push({ day:'Neuer Tag', slots:[] });
-    renderView();
-  };
-
-  // ---------- Schul-Dropdown (Pflicht) ----------
+  // ---------- Schul-Dropdown ----------
   async function setupSchoolPicker(){
-    const sel = $('schoolSelect');
-    sel.disabled = true;
-
-    const groupKey = (sessionStorage.getItem('school')||'').trim() || 'MASTER';
-    STATE.groupKey = groupKey;
-
-    let list = await loadAccessibleSchools(groupKey.toUpperCase()==='MASTER' ? 'MASTER' : groupKey);
-    list = list.map(s=>String(s).trim()).filter(Boolean);
-
-    sel.innerHTML='';
-    const mk = (v,t)=>{const o=document.createElement('option');o.value=v; o.textContent=t; return o;};
-    sel.appendChild(mk('', '— bitte Schule wählen —'));
-    if(groupKey.toUpperCase()==='MASTER') sel.appendChild(mk('MASTER','MASTER (alle)'));
-    list.forEach(name=> sel.appendChild(mk(name.toLowerCase(), name)));
-
-    // letzte gültige Auswahl
-    const last = (sessionStorage.getItem('activeSchool')||'').toLowerCase();
-    if(last && (last==='master' || list.map(s=>s.toLowerCase()).includes(last))){
-      sel.value = last;
-      STATE.school = last==='master' ? '' : last;
-    } else {
-      sel.value = '';
-      STATE.school = '';
-    }
-
-    sel.disabled = false;
-
-    sel.onchange = async ()=>{
-      const v = (sel.value||'').toLowerCase();           // IDs immer klein
-      sessionStorage.setItem('activeSchool', v);
-      STATE.school = (v && v!=='master') ? v : '';
-      STATE.editMode = false;
-      toggleSchemaButtons();
-      try{
-        await initLoad(true);
-      }catch(err){
-        console.error('initLoad error after school change:', err);
-        root.innerHTML = `<div class="hint">Fehler beim Laden: ${err?.message||err}. Prüfe Firestore-Rules.</div>`;
-      }
+    const sel=$('schoolSelect'); sel.disabled=true;
+    const groupKey=(sessionStorage.getItem('school')||'').trim()||'MASTER';
+    STATE.groupKey=groupKey;
+    let list=await loadAccessibleSchools(groupKey);
+    list=list.map(s=>s.toLowerCase());
+    sel.innerHTML='<option value="">— bitte Schule wählen —</option>';
+    list.forEach(name=>{ const o=document.createElement('option'); o.value=name; o.textContent=name; sel.appendChild(o); });
+    sel.disabled=false;
+    sel.onchange=async()=>{
+      const v=(sel.value||'').toLowerCase();
+      sessionStorage.setItem('activeSchool',v);
+      STATE.school=v;
+      const {schema,beleg}=await loadAllForSchool(v);
+      STATE.schema=schema; STATE.belegung=beleg||{}; renderView();
     };
   }
 
-  // ---------- Init ----------
-  async function initLoad(fromPicker=false){
-    const role = normalizeRole(sessionStorage.getItem('role')||'');
-    const group = (sessionStorage.getItem('school')||'').trim() || 'MASTER';
-    STATE.role = role || 'user';
-    STATE.canEdit = (STATE.role==='admin' || STATE.role==='si-fu');
-
-    $('userRole').textContent   = STATE.role;
-    $('userSchool').textContent = group || '–';
-
-    if(!fromPicker) await setupSchoolPicker();
-
-    if(!STATE.school){
-      root.innerHTML = '<div class="hint">Bitte oben zuerst eine Schule wählen.</div>';
-      toggleSchemaButtons();
-      return;
-    }
-
-    try{
-      const { schema, beleg } = await loadAllForSchool(STATE.school);
-      STATE.schema = schema;
-      STATE.belegung = beleg;
-      STATE.editMode = false;
-
-      if (!Array.isArray(schema.slots) || schema.slots.length===0){
-        root.innerHTML = `<div class="hint">Für <b>${STATE.school}</b> ist noch keine Struktur hinterlegt.</div>`;
-      } else {
-        renderView();
-      }
-      toggleSchemaButtons();
-    }catch(e){
-      console.error('initLoad read error', e);
-      root.innerHTML = `<div class="hint">Fehler beim Laden: ${e?.message||e}</div>`;
-    }
-  }
-
-  // ---------- Auth ----------
   auth.onAuthStateChanged(async user=>{
-    if(!user){location.href="index.html";return;}
-    try{
-      // Falls Session leer: Rolle & Gruppe aus DB
-      let role=(sessionStorage.getItem('role')||'').trim();
-      let schoolGroup=(sessionStorage.getItem('school')||'').trim();
-      if(!role||!schoolGroup){
-        const rdoc=await db.collection('rollen').doc(user.uid).get();
-        if(rdoc.exists){
-          const data=rdoc.data()||{};
-          role = normalizeRole(data.role||'user');
-          schoolGroup = (data.school||'').trim() || 'MASTER';
-          sessionStorage.setItem('role', role);
-          sessionStorage.setItem('school', schoolGroup);
-        }
-      }
-      await initLoad();
-    }catch(e){
-      console.error(e);
-      root.innerHTML='<div class="hint">Fehler beim Laden.</div>';
-    }
+    if(!user){location.href='index.html';return;}
+    const rdoc=await db.collection('rollen').doc(user.uid).get();
+    let role='user', school='MASTER';
+    if(rdoc.exists){const d=rdoc.data();role=normalizeRole(d.role);school=d.school||'MASTER';}
+    STATE.role=role; STATE.canEdit=(role==='admin'||role==='si-fu');
+    $('userRole').textContent=role; $('userSchool').textContent=school;
+    await setupSchoolPicker();
   });
   </script>
 </body>
