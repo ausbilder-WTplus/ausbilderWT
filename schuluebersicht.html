@@ -6,47 +6,56 @@
   <title>Schulübersicht</title>
   <style>
     :root { --bg:#000; --text:#fff; --accent-bg:#fff; --accent-text:#000; }
-    * { box-sizing: border-box; }
+    * { box-sizing:border-box; }
     body{
-      margin:0; font-family: Arial, Helvetica, sans-serif;
-      background:var(--bg); color:var(--text);
+      margin:0;
+      font-family:Arial, Helvetica, sans-serif;
+      background:var(--bg);
+      color:var(--text);
       -webkit-font-smoothing:antialiased;
-      min-height:100vh; display:flex; flex-direction:column;
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
     }
 
-    /* Header wie auf den anderen Seiten */
+    /* ===== Header (wie auf anderen Seiten) ===== */
     .header{
-      display:flex; justify-content:space-between; align-items:center;
-      padding:12px 16px; gap:12px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:12px 16px;
+      gap:12px;
     }
-    .header img{ height:80px; width:auto; object-fit:contain; }
-    .header .master-label{
-      flex:1; text-align:center; font-size:48px; font-weight:bold; letter-spacing:4px;
+    .header img{
+      height:80px; width:auto; object-fit:contain;
     }
-    @media (max-width:750px){ .header img{ height:44px; } .header .master-label{ font-size:32px; } }
-    @media (max-width:480px){ .header img{ height:40px; } .header .master-label{ font-size:26px; } }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
 
     .wrap { display:flex; flex-direction:column; align-items:center; gap:14px; padding:12px; }
 
-    /* Grundriss-Container */
+    /* ===== Plan-Container ===== */
     .plan-wrap{
-      position:relative; width:95%; max-width:980px; background:#fff;
+      position:relative;
+      width:95%; max-width:980px; background:#fff;
       border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.35);
       overflow:hidden; border:1px solid rgba(255,255,255,.12);
     }
     .plan-wrap img{ display:block; width:100%; height:auto; }
 
-    /* Marker (grünes Quadrat) */
+    /* Marker */
     .marker{
-      position:absolute; width:18px; height:18px;
+      position:absolute;
+      width:18px; height:18px;
       background:#2ecc71; border:2px solid #0e6b3c; border-radius:4px;
-      transform: translate(-50%, -50%);
-      box-shadow:0 0 8px rgba(46, 204, 113, .8);
+      transform:translate(-50%, -50%);
+      box-shadow:0 0 8px rgba(46,204,113,.8);
     }
 
-    /* Steuerleiste */
+    /* ===== Auswahl und Legende ===== */
     .controls{
-      width:95%; max-width:980px; display:flex; flex-wrap:wrap; gap:10px;
+      width:95%; max-width:980px;
+      display:flex; flex-wrap:wrap; gap:10px;
       align-items:center; justify-content:center;
     }
     .select{
@@ -62,9 +71,20 @@
       display:flex; align-items:center; gap:8px; margin-top:2px;
     }
     .legend .dot{
-      width:14px; height:14px; background:#2ecc71; border:2px solid #0e6b3c; border-radius:3px;
+      width:14px; height:14px;
+      background:#2ecc71; border:2px solid #0e6b3c; border-radius:3px;
       box-shadow:0 0 6px rgba(46,204,113,.7);
     }
+
+    /* ===== Home-Button (identisch) ===== */
+    .home-btn{
+      position:fixed;
+      left:18px; bottom:18px;
+      border:none; background:#fff; color:#000;
+      border-radius:50%; padding:10px;
+      cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    .home-btn img{ width:32px; height:32px; display:block; }
   </style>
 </head>
 <body>
@@ -75,14 +95,13 @@
     <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
   </div>
 
+  <!-- Inhalt -->
   <div class="wrap">
-    <!-- Grundriss -->
     <div class="plan-wrap" id="planWrap">
       <img id="planImg" src="grundriss.png" alt="Grundriss der Schule">
-      <!-- Marker werden per JS dynamisch eingefügt -->
+      <!-- Marker werden per JS eingefügt -->
     </div>
 
-    <!-- Auswahl -->
     <div class="controls">
       <select id="itemSelect" class="select" aria-label="Gegenstand auswählen">
         <option value="">— Gegenstand wählen —</option>
@@ -103,27 +122,30 @@
     <div class="legend"><span class="dot"></span> Markierung des aktuell ausgewählten Gegenstands</div>
   </div>
 
-  <!-- Firebase (für Login-Guard) -->
+  <!-- Home-Button -->
+  <button class="home-btn" onclick="location.href='hauptseite.html'">
+    <img src="home.jpg" alt="Home">
+  </button>
+
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
-
-  <!-- Zentrale Firebase-Config -->
   <script src="firebase-config.js"></script>
 
   <script>
-    // ---- Auth-Guard & Header-Logik (zentral initialisiert) ----
-    firebase.initializeApp(window.firebaseConfig);
+    // ---- Firebase Init ----
+    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
+    // ---- Header & Login-Guard ----
     auth.onAuthStateChanged(async (u)=>{
       if(!u){ location.href="index.html"; return; }
 
-      // Schule aus Session / Firestore holen und Logos setzen (MASTER → Text)
       try{
-        let school = (sessionStorage.getItem('school') || '').toLowerCase();
+        let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').toLowerCase();
         if(!school){
           const snap = await db.collection('rollen').doc(u.uid).get();
           if(snap.exists){
@@ -132,7 +154,6 @@
           }
         }
 
-        const header = document.getElementById('header');
         const logoLeft   = document.getElementById('logo-left');
         const logoCenter = document.getElementById('logo-center');
         const logoRight  = document.getElementById('logo-right');
@@ -144,9 +165,7 @@
           test.src = url;
         }
 
-        if(school === 'master'){
-          header.innerHTML = '<div class="master-label">MASTER</div>';
-        }else if(school){
+        if (school && school !== 'master'){
           const base = `logos/${school}`;
           preloadAndSet(logoCenter, `${base}/logo-center.jpg`);
           preloadAndSet(logoLeft,   `${base}/logo-left.jpg`);
@@ -157,18 +176,18 @@
       }
     });
 
-    // ---- Positions: mehrere Punkte pro Eintrag (Prozent relativ zum Bild)
+    // ---- Marker-Logik ----
     const positions = {
-      "Feuerlöscher":            [ { x: 72,  y: 60 } ],
-      "Kids-Regeln":             [ { x: 41,  y: 69}, { x: 58, y: 69 } ],
-      "Erste-Hilfe-Kasten":      [ { x: 30,  y: 75 }, { x: 18,  y: 20 }],
-      "Kasse":                   [ { x: 5,   y: 5 } ],
-      "T-Shirts":                [ { x: 15,  y: 5 } ],
-      "Abzeichen":               [ { x: 30,  y: 80 } ],
-      "Traubenzucker":           [ { x: 18,  y: 20 } ],
-      "Getränke":                [ { x: 30,  y: 85 }, { x: 75,  y: 20 }],
-      "Erste-Hilfe-Notfallplan": [ { x: 68,  y: 65 } ],
-      "Bonbons":                 [ { x: 30,  y: 82 }, { x: 75,  y: 20 } ]
+      "Feuerlöscher":            [ { x:72, y:60 } ],
+      "Kids-Regeln":             [ { x:41, y:69 }, { x:58, y:69 } ],
+      "Erste-Hilfe-Kasten":      [ { x:30, y:75 }, { x:18, y:20 } ],
+      "Kasse":                   [ { x:5,  y:5 } ],
+      "T-Shirts":                [ { x:15, y:5 } ],
+      "Abzeichen":               [ { x:30, y:80 } ],
+      "Traubenzucker":           [ { x:18, y:20 } ],
+      "Getränke":                [ { x:30, y:85 }, { x:75, y:20 } ],
+      "Erste-Hilfe-Notfallplan": [ { x:68, y:65 } ],
+      "Bonbons":                 [ { x:30, y:82 }, { x:75, y:20 } ]
     };
 
     const select   = document.getElementById('itemSelect');
@@ -190,7 +209,6 @@
         planWrap.appendChild(m);
       });
     }
-
     select.addEventListener('change', e=> placeMarkersFor(e.target.value));
   </script>
 </body>
