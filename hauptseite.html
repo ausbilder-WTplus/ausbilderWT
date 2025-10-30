@@ -214,16 +214,32 @@ document.getElementById('logoutBtn').onclick=async()=>{await auth.signOut();sess
 document.getElementById('profileBtn').onclick=()=>location.href='profil.html';
 document.getElementById('settingsBtn').onclick=()=>location.href='einstellungen.html';
 
-function preloadAndSet(img,u){const t=new Image();t.onload=()=>img.src=u;t.src=u;}
-function applyHeaderBySchool(s){
-  const h=document.querySelector('header');
-  h.innerHTML=`<img id="logo-left" src="pluslogo.png"><img id="logo-center" src="faust.jpg"><img id="logo-right" src="melsungen.jpg">`;
-  if(!s||s.toLowerCase()==='master')return;
-  const b=`logos/${s.toLowerCase()}`;
-  preloadAndSet(document.getElementById('logo-left'),`${b}/logo-left.jpg`);
-  preloadAndSet(document.getElementById('logo-center'),`${b}/logo-center.jpg`);
-  preloadAndSet(document.getElementById('logo-right'),`${b}/logo-right.jpg`);
+/* -------- Logos robust aktualisieren (keine innerHTML-Neuschreibung!) -------- */
+function preloadAndSet(img,u){
+  if(!img) return;
+  const t=new Image();
+  t.onload=()=>{ img.src=u; };
+  t.src=u;
 }
+function applyHeaderBySchool(s){
+  const left = document.getElementById('logo-left');
+  const center = document.getElementById('logo-center');
+  const right = document.getElementById('logo-right');
+
+  // Defaults setzen
+  if (left)   left.src = 'pluslogo.png';
+  if (center) center.src = 'faust.jpg';
+  if (right)  right.src = 'melsungen.jpg';
+
+  if(!s || s.toLowerCase()==='master') return;
+
+  const base=`logos/${s.toLowerCase()}`;
+  if (left)   preloadAndSet(left,   `${base}/logo-left.jpg`);
+  if (center) preloadAndSet(center, `${base}/logo-center.jpg`);
+  if (right)  preloadAndSet(right,  `${base}/logo-right.jpg`);
+}
+
+/* -------- Hilfsfunktionen Firestore -------- */
 const normalize=r=>{
   r=(r||'').toLowerCase();
   if(['administrator','admins','adminstrator'].includes(r))r='admin';
@@ -338,6 +354,7 @@ auth.onAuthStateChanged(async user=>{
   chooseLbl.textContent=(active.toUpperCase()==='MASTER' ? 'MASTER' : active);
   applyHeaderBySchool(active);
 
+  // Links & Kalender für aktive Schule setzen
   await setLink('oneNoteBtn',active,['onenote','OneNote','OneNoteURL']);
   await setLink('templatesBtn',active,['vorlagen']);
   await setLink('driveBtn',active,['drive']);
@@ -377,11 +394,14 @@ document.addEventListener('click',async e=>{
     const v=s.value||'MASTER';
     sessionStorage.setItem('activeSchool', v.toLowerCase());
     document.getElementById('chooseSchoolLabel').textContent=(v.toUpperCase()==='MASTER'?'MASTER':v);
+
+    // Header + Links + Kalender aktualisieren
     applyHeaderBySchool(v);
     await setLink('oneNoteBtn',v,['onenote','OneNote','OneNoteURL']);
     await setLink('templatesBtn',v,['vorlagen']);
     await setLink('driveBtn',v,['drive']);
     await setupCalendarForSchool(v);
+
     document.getElementById('chooseSchoolDlg').style.display='none';
   }
 });
