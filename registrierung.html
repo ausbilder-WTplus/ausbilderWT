@@ -5,30 +5,41 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Registrierung</title>
   <style>
-    :root { --bg:#000; --text:#fff; --card:#111; --border:#2a2a2a; --ok:#2ecc71; --err:#ff6b6b; }
+    :root { --bg:#000; --text:#fff; --card:#111; --border:#2a2a2a; --ok:#2ecc71; --err:#ff6b6b; --muted:#aaa; }
     * { box-sizing:border-box; }
-    body { margin:0; background:#000; color:#fff; font-family:Arial, Helvetica, sans-serif;
+    body { margin:0; background:var(--bg); color:var(--text); font-family:Arial, Helvetica, sans-serif;
            min-height:100vh; display:flex; flex-direction:column; }
     .header{ display:flex; justify-content:space-between; align-items:center; padding:12px 16px; gap:12px; }
     .header img{ height:80px; width:auto; object-fit:contain; }
     @media (max-width:750px){ .header img{ height:44px; } }
     @media (max-width:480px){ .header img{ height:40px; } }
+
     .wrap{ flex:1; display:flex; flex-direction:column; align-items:center; padding:16px; }
-    .card{ width:100%; max-width:680px; background:#111; border:1px solid var(--border);
+    .card{ width:100%; max-width:700px; background:var(--card); border:1px solid var(--border);
            border-radius:12px; padding:16px; box-shadow:0 4px 16px rgba(0,0,0,.35); }
     h1{ margin:0 0 12px; font-size:24px; }
     .row{ display:flex; gap:12px; align-items:center; margin:10px 0; }
-    .row label{ min-width:120px; }
+    .row label{ min-width:140px; color:#fff; }
     .input, .select{ flex:1; padding:10px 12px; border-radius:10px; border:1px solid #333; background:#000; color:#fff; font-size:16px; }
     .select:disabled{ opacity:.7; }
+    .hint{ font-size:13px; color:var(--muted); margin:4px 0 0 140px; }
     .btn{ background:#fff; color:#000; border:none; border-radius:12px; padding:10px 18px; font-size:16px;
           cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35); }
     .btn[disabled]{ opacity:.6; cursor:default; }
     .msg{ margin-top:10px; font-size:14px; }
     .ok{ color:var(--ok); } .err{ color:var(--err); }
-    .home-btn{ position:fixed; left:18px; bottom:18px; border:none; background:#fff; color:#000;
-               border-radius:50%; padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35); }
-    .home-btn img{ width:32px; height:32px; display:block; }
+
+    /* Home-Button klein & rund */
+    .home-btn{
+      position:fixed; left:18px; bottom:18px; z-index:1000;
+      width:48px; height:48px; border:none; border-radius:9999px;
+      display:grid; place-items:center; background:#fff; color:#000;
+      box-shadow:0 6px 18px rgba(0,0,0,.35); cursor:pointer;
+      transition:transform .12s ease, box-shadow .12s ease, opacity .2s ease; padding:0;
+    }
+    .home-btn:hover{ transform:translateY(-1px) scale(1.04); box-shadow:0 8px 22px rgba(0,0,0,.45); }
+    .home-btn:active{ transform:translateY(0) scale(0.98); box-shadow:0 4px 14px rgba(0,0,0,.3); }
+    .home-btn img{ width:22px; height:22px; display:block; pointer-events:none; }
   </style>
 </head>
 <body>
@@ -61,13 +72,22 @@
         </select>
       </div>
 
-      <div class="row">
-        <label for="school">Schule</label>
-        <!-- Optionen werden dynamisch geladen -->
+      <!-- Nur für MASTER sichtbar -->
+      <div class="row" id="groupRow" style="display:none;">
+        <label for="group">Gruppe</label>
+        <select id="group" class="select">
+          <option disabled selected>Lade Gruppen…</option>
+        </select>
+      </div>
+      <div class="hint" id="groupHint" style="display:none;">MASTER kann jede Gruppe wählen.</div>
+
+      <div class="row" id="schoolRow">
+        <label for="school">Schule / Gruppe</label>
         <select id="school" class="select">
           <option disabled selected>Lade verfügbare Schulen…</option>
         </select>
       </div>
+      <div class="hint" id="schoolHint">Wähle eine Schule. (Als Gruppen-Admin kannst du auch deine Gruppe selbst zuweisen.)</div>
 
       <div class="row" style="justify-content:flex-end">
         <button id="registerBtn" class="btn">Registrieren</button>
@@ -77,8 +97,8 @@
     </div>
   </div>
 
-  <button class="home-btn" onclick="location.href='hauptseite.html'">
-    <img src="home.jpg" alt="Home">
+  <button class="home-btn" onclick="location.href='hauptseite.html'" aria-label="Zur Startseite">
+    <img src="home.jpg" alt="">
   </button>
 
   <!-- Firebase SDKs -->
@@ -91,7 +111,7 @@
   <script src="firebase-config.js"></script>
 
   <script>
-    /* ---------- Firebase Init (zentral) ---------- */
+    /* ---------- Firebase Init ---------- */
     if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.firestore();
@@ -102,14 +122,6 @@
     const $ = s => document.querySelector(s);
     const setMsg = (t, ok=false) => { const el = $("#msg"); el.textContent=t; el.className = "msg " + (ok?"ok":"err"); };
 
-    function roleTitleCase(role){
-      role = (role||"").toLowerCase();
-      if (role === "si-fu") return "Si-Fu";
-      if (role === "admin") return "Admin";
-      if (role === "trainer") return "Trainer";
-      return role.charAt(0).toUpperCase() + role.slice(1);
-    }
-
     const normalize = r => {
       r=(r||"").toLowerCase();
       if(['administrator','admins','adminstrator'].includes(r)) r='admin';
@@ -118,96 +130,155 @@
       return r;
     };
 
-    function splitSchoolsString(str){
-      if (!str) return [];
+    function roleTitleCase(role){
+      role = (role||"").toLowerCase();
+      if (role === "si-fu") return "Si-Fu";
+      if (role === "admin") return "Admin";
+      if (role === "trainer") return "Trainer";
+      return role.charAt(0).toUpperCase() + role.slice(1);
+    }
+
+    function splitList(str){
+      if(!str) return [];
       return String(str).split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
     }
 
-    async function loadAccessibleSchools(key){
-      // probiere MASTER, master, Master etc.
-      const tries = [key, String(key).toUpperCase(), key.charAt(0).toUpperCase()+key.slice(1)];
-      for (const k of tries){
+    // Schulen einer Gruppe laden (bevorzugt 'School' Array; Legacy kompatibel)
+    async function loadSchoolsForGroup(groupId){
+      const tries=[groupId, groupId?.toUpperCase(), groupId?.charAt(0)?.toUpperCase()+groupId?.slice(1)?.toLowerCase(), groupId?.toLowerCase()].filter(Boolean);
+      for(const k of tries){
         try{
           const snap = await db.collection('Schulen').doc(k).get();
-          if (snap.exists){
+          if(snap.exists){
             const d = snap.data()||{};
-            if (Array.isArray(d.School)) return d.School.map(String).map(s=>s.trim()).filter(Boolean);
-            if (typeof d.School === 'string') return splitSchoolsString(d.School);
-            if (Array.isArray(d.schools)) return d.schools.map(String).map(s=>s.trim()).filter(Boolean);
-            if (typeof d.schools === 'string') return splitSchoolsString(d.schools);
-            return [];
+            if(Array.isArray(d.School)) return { docId: snap.id, schools: d.School.map(s=>String(s).trim()).filter(Boolean) };
+            if(typeof d.School==='string') return { docId: snap.id, schools: splitList(d.School) };
+            // Legacy Fallbacks:
+            if(Array.isArray(d.school)) return { docId: snap.id, schools: d.school.map(s=>String(s).trim()).filter(Boolean) };
+            if(typeof d.school==='string') return { docId: snap.id, schools: splitList(d.school) };
+            if(Array.isArray(d.schools)) return { docId: snap.id, schools: d.schools.map(s=>String(s).trim()).filter(Boolean) };
+            if(typeof d.schools==='string') return { docId: snap.id, schools: splitList(d.schools) };
+            return { docId: snap.id, schools: [] };
           }
-        }catch(e){
-          console.warn('loadAccessibleSchools error', k, e);
-        }
+        }catch(e){ console.warn('loadSchoolsForGroup', k, e); }
       }
-      return [];
+      return { docId: groupId, schools: [] };
     }
 
-    /* ---------- Schul-Select dynamisch befüllen ---------- */
-    let currentSchool = "";
+    // Alle Gruppen laden (Doc-IDs)
+    async function loadAllGroups(){
+      const qs = await db.collection('Schulen').get();
+      return qs.docs.map(d=>d.id).sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
+    }
+
+    // UI füllen: Schul-/Gruppen-Auswahllogik
+    async function populateSelectors(ctx){
+      const schoolSel = $("#school");
+      const groupSel  = $("#group");
+
+      // Reset
+      schoolSel.innerHTML = '<option disabled selected>Lade…</option>';
+      if(groupSel) groupSel.innerHTML = '';
+
+      if(ctx.isMaster){
+        // MASTER: Gruppe wählen + innerhalb der Gruppe Schul-Liste + Option „<Gruppe> (Gruppe)“
+        $("#groupRow").style.display = '';
+        $("#groupHint").style.display = '';
+        const groups = await loadAllGroups();
+        groups.forEach(g=>{
+          const o=document.createElement('option'); o.value=g; o.textContent=g; groupSel.appendChild(o);
+        });
+        const chosenGroup = sessionStorage.getItem('regChosenGroup') || groups[0] || 'MASTER';
+        groupSel.value = chosenGroup;
+        await fillSchools(chosenGroup, true);
+        groupSel.onchange = async ()=>{
+          sessionStorage.setItem('regChosenGroup', groupSel.value);
+          await fillSchools(groupSel.value, true);
+        };
+        $("#schoolHint").textContent = 'Wähle eine Schule dieser Gruppe – oder die Gruppe selbst.';
+      } else if (ctx.hasGroupList){
+        // Gruppen-Admin: nur eigene Gruppe, mit Option Gruppe selbst
+        $("#groupRow").style.display = 'none';
+        $("#groupHint").style.display = 'none';
+        await fillSchools(ctx.baseGroup, true);
+        $("#schoolHint").textContent = 'Wähle eine Schule deiner Gruppe – oder die Gruppe selbst.';
+      } else {
+        // Einzelschule: fixierte Schule, Select gesperrt
+        $("#groupRow").style.display = 'none';
+        $("#groupHint").style.display = 'none';
+        const only = ctx.baseGroup || 'MASTER';
+        schoolSel.innerHTML = '';
+        const o=document.createElement('option'); o.value=only; o.textContent=only;
+        schoolSel.appendChild(o);
+        schoolSel.disabled = true;
+        $("#schoolHint").textContent = 'Deine Schule ist fest zugewiesen.';
+      }
+
+      async function fillSchools(groupId, includeGroupOption){
+        const { docId, schools } = await loadSchoolsForGroup(groupId);
+        schoolSel.disabled = false;
+        schoolSel.innerHTML = '';
+
+        if(includeGroupOption){
+          const og=document.createElement('option');
+          og.value = docId;
+          og.textContent = `${docId} (Gruppe)`;
+          schoolSel.appendChild(og);
+        }
+
+        if(schools.length){
+          schools.forEach(name=>{
+            const o=document.createElement('option'); o.value=name; o.textContent=name; schoolSel.appendChild(o);
+          });
+        } else if(!includeGroupOption){
+          // Nichts bekannt? Fallback: nur Gruppe
+          const og=document.createElement('option');
+          og.value = docId; og.textContent = `${docId}`;
+          schoolSel.appendChild(og);
+        }
+
+        // Vorauswahl: Gruppe (wenn vorhanden), sonst erste Schule
+        if(includeGroupOption){
+          schoolSel.value = docId; // standardmäßig Gruppe
+        } else if(schoolSel.options.length){
+          schoolSel.selectedIndex = 0;
+        }
+      }
+    }
+
+    /* ---------- Seite initialisieren ---------- */
+    let ctx = { isMaster:false, baseGroup:'', hasGroupList:false };
     auth.onAuthStateChanged(async user => {
       if (!user) { location.href = "index.html"; return; }
 
-      // eigene Rolle/Schule laden (aus Session oder Firestore)
+      // Rolle/„Gruppe“ des eingeloggten Nutzers laden
       let role   = normalize(sessionStorage.getItem('role'));
-      currentSchool = (sessionStorage.getItem('school') || '').trim();
+      let base   = (sessionStorage.getItem('school') || '').trim();
 
-      if (!role || !currentSchool){
-        try {
+      if (!role || !base){
+        try{
           const snap = await db.collection("rollen").doc(user.uid).get();
           if (snap.exists) {
-            const data = snap.data();
+            const data = snap.data()||{};
             role = normalize(data.role || 'user');
-            currentSchool = (data.school || '').trim();
+            base = (data.school || '').trim();
             sessionStorage.setItem('role', role);
-            sessionStorage.setItem('school', currentSchool);
+            sessionStorage.setItem('school', base);
             sessionStorage.setItem('loggedInUser', user.email || '');
           }
-        } catch {}
+        }catch{}
       }
 
-      const schoolSel = $("#school");
-      schoolSel.innerHTML = '<option disabled selected>Lade verfügbare Schulen…</option>';
+      ctx.baseGroup = base;
+      ctx.isMaster  = (base || '').toUpperCase() === 'MASTER';
 
-      const upper = (currentSchool || '').toUpperCase();
-      let list = [];
-
-      if (upper === 'MASTER') {
-        // MASTER darf alles sehen → Schulen/MASTER
-        list = await loadAccessibleSchools('MASTER');
-        // Optional: auch "MASTER" selbst anbieten (z.B. für neue Master-Accounts)
-        const optM = document.createElement('option');
-        optM.value = 'MASTER'; optM.textContent = 'MASTER';
-        schoolSel.appendChild(optM);
-      } else {
-        // Gruppen-Schule? (z.B. Degenhardt) → Schulen/Degenhardt
-        list = await loadAccessibleSchools(currentSchool);
+      // Prüfen: hat diese Gruppe eine Liste (=> Gruppen-Admin) oder ist es eine Einzelschule?
+      if(!ctx.isMaster){
+        const listInfo = await loadSchoolsForGroup(base);
+        ctx.hasGroupList = (listInfo.schools && listInfo.schools.length > 0);
       }
 
-      if (list.length > 0) {
-        list.forEach(name => {
-          const o = document.createElement('option');
-          o.value = name; o.textContent = name;
-          schoolSel.appendChild(o);
-        });
-        // Vorauswahl: wenn MASTER, bleib auf MASTER; sonst auf erste Schule
-        if (upper === 'MASTER') {
-          schoolSel.value = 'MASTER';
-        } else {
-          schoolSel.value = list[0];
-        }
-        schoolSel.disabled = false;
-      } else {
-        // keine Liste -> Einzelschule (oder Daten fehlen) → fixieren & sperren
-        const only = currentSchool || 'MASTER';
-        schoolSel.innerHTML = '';
-        const o = document.createElement('option');
-        o.value = only; o.textContent = only;
-        schoolSel.appendChild(o);
-        schoolSel.value = only;
-        schoolSel.disabled = upper !== 'MASTER'; // MASTER ohne Liste bleibt wählbar, sonst gesperrt
-      }
+      await populateSelectors(ctx);
     });
 
     /* ---------- Registrierung ---------- */
@@ -215,17 +286,27 @@
       const email = $("#email").value.trim();
       const pass  = $("#pass").value;
       let role    = $("#role").value.toLowerCase();
-      let school  = $("#school").value; // kommt aus dynamischer Liste
+      let chosen  = $("#school").value; // kann Gruppe ODER Schule sein
 
       if (!email || !pass) { setMsg("Bitte E-Mail und Passwort eingeben."); return; }
 
-      // Falls aktueller Nutzer keine MASTER-/Gruppen-Rechte hat, Schule auf eigene Schule fixieren
-      if (currentSchool && currentSchool.toUpperCase() !== "MASTER") {
-        const maybeGroupList = await loadAccessibleSchools(currentSchool);
-        if (maybeGroupList.length === 0) {
-          // echte Einzelschule → überschreibe gewählte Schule sicherheitshalber
-          school = currentSchool;
+      // Schutzlogik (falls jemand das DOM manipuliert):
+      if (!ctx.isMaster){
+        if (ctx.hasGroupList) {
+          // nur eigene Gruppe oder deren Schulen erlaubt
+          const { docId, schools } = await loadSchoolsForGroup(ctx.baseGroup);
+          const allowed = new Set([docId, ...schools]);
+          if(!allowed.has(chosen)){
+            setMsg("❌ Keine Berechtigung für die gewählte Gruppe/Schule."); return;
+          }
+        } else {
+          // Einzelschule → nur diese Schule erlaubt
+          if (chosen !== ctx.baseGroup) {
+            setMsg("❌ Du kannst nur deine eigene Schule zuweisen."); return;
+          }
         }
+      } else {
+        // MASTER darf alles (keine Einschränkung)
       }
 
       const btn = $("#registerBtn");
@@ -236,33 +317,33 @@
       let secondaryApp = null;
 
       try {
-        // sekundäre App, damit du eingeloggt bleibst
+        // sekundäre App verwenden (damit aktueller Admin eingeloggt bleibt)
         secondaryApp = firebase.initializeApp(window.firebaseConfig, secondaryName);
         const secAuth = secondaryApp.auth();
 
-        // 1) User anlegen
+        // 1) Nutzer anlegen
         const cred = await secAuth.createUserWithEmailAndPassword(email, pass);
         const newUid = cred.user.uid;
 
-        // 2) Firestore-Rolle schreiben
-        await db.collection("rollen").doc(newUid).set({ role, school });
+        // 2) Rollen-Dokument setzen: school = gewählte Gruppe ODER Schule
+        await db.collection("rollen").doc(newUid).set({ role, school: chosen });
 
-        // 3) Erfolg SOFORT zeigen
+        // 3) Erfolg
         setMsg("✅ Nutzer registriert (Auth + Firestore).", true);
 
-        // 4) Realtime-DB (optional, ohne UI-Block)
+        // 4) RTDB (optional, ohne UI-Block)
         (async () => {
           try {
-            const rtdbValue = `'${roleTitleCase(role)},${school}'`;
-            const rtdbWrite = rtdb.ref("logintest_Kopie/" + newUid).set(rtdbValue);
+            const value = `'${roleTitleCase(role)},${chosen}'`;
+            const write = rtdb.ref("logintest_Kopie/" + newUid).set(value);
             const timeout = new Promise((_,rej)=>setTimeout(()=>rej(new Error("rtdb-timeout")), 3000));
-            await Promise.race([rtdbWrite, timeout]);
+            await Promise.race([write, timeout]);
           } catch (e) {
             console.warn("RTDB übersprungen:", e?.message || e);
           }
         })();
 
-        // 5) Formular zurücksetzen
+        // 5) Formular resetten
         $("#email").value = "";
         $("#pass").value = "";
         $("#role").value = "Trainer";
