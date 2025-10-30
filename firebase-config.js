@@ -1,10 +1,10 @@
 // firebase-config.js
 window.firebaseConfig = {
-  apiKey: "AIzaSyCve4c8a1nzU8SJcDhF4rqRzu30JaJ2rq8",
-  authDomain: "login-wt-my.firebaseapp.com",
-  projectId: "login-wt-my",
-  storageBucket: "login-wt-my.firebasestorage.app",
-  messagingSenderId: "666746071009",
-  appId: "1:666746071009:web:78cb64549d4309bc67d4a0",
-  databaseURL: "https://login-wt-my-default-rtdb.europe-west1.firebasedatabase.app" // ← wichtig für RTDB
+  apiKey: "AIzaSyDNY_Laa_eeiQmC6rcHWRNn_P-qdA7vzdw",
+  authDomain: "wt-plus-login.firebaseapp.com",
+  projectId: "wt-plus-login",
+  storageBucket: "wt-plus-login.firebasestorage.app",
+  messagingSenderId: "775441256129",
+  appId: "1:775441256129:web:64b962f72181248ef04e40",
+  databaseURL: "https://wt-plus-login-default-rtdb.firebaseio.com" // ← wichtig für RTDB
 };
