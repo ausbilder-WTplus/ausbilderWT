@@ -9,12 +9,12 @@
       margin:0; background:#000; color:#fff; font-family:Arial,Helvetica,sans-serif;
       display:flex; flex-direction:column; align-items:center;
     }
-    /* HEADER */
+    /* HEADER (identisch wie andere Seiten) */
     .header{
       display:flex; justify-content:space-between; align-items:center;
       padding:12px 16px; gap:12px; border-bottom:1px solid #222; width:100%;
     }
-    .header img{ height:70px; width:auto; object-fit:contain; }
+    .header img{ height:80px; width:auto; object-fit:contain; }
     @media (max-width:750px){ .header img{ height:44px; } }
     @media (max-width:480px){ .header img{ height:40px; } }
 
@@ -31,6 +31,7 @@
     select, input[type="text"], input[type="time"]{
       background:#111;color:#fff;border:1px solid #333;border-radius:8px;padding:6px 8px;
     }
+    select[disabled]{opacity:.75; cursor:not-allowed;}
     .wrap{max-width:900px;width:100%;margin-top:10px;padding:0 20px 40px;}
     .card{
       background:#111;border:1px solid #333;border-radius:10px;
@@ -39,6 +40,15 @@
     .trainers{display:flex;flex-direction:column;gap:4px;margin-top:8px;}
     .hint{color:#aaa;font-size:14px;margin-top:12px;}
     .day-label{font-weight:bold;color:#2ecc71;}
+
+    /* Home-Button (optional, wie die anderen Seiten) */
+    .home-btn{
+      position:fixed; left:18px; bottom:18px;
+      border:none; background:#fff; color:#000;
+      border-radius:50%; padding:10px; cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.35); z-index:1000;
+    }
+    .home-btn img{ width:32px; height:32px; display:block; }
   </style>
 </head>
 <body>
@@ -52,10 +62,16 @@
 
   <div class="top-bar">
     <h1>Trainingszeiten</h1>
-    <select id="schoolSelect"></select>
+    <!-- Dropdown zeigt nur die aktive Schule und ist deaktiviert -->
+    <select id="schoolSelect" disabled></select>
     <button id="addTrainingBtn" class="btn" style="display:none;">➕ Training hinzufügen</button>
   </div>
   <div id="schedule" class="wrap"></div>
+
+  <!-- Home-Button (falls gewünscht) -->
+  <button class="home-btn" onclick="location.href='hauptseite.html'">
+    <img src="home.jpg" alt="Home">
+  </button>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
@@ -91,7 +107,10 @@
   function renderTrainings(){
     const wrap=$('schedule');
     wrap.innerHTML="";
-    if(!STATE.school){wrap.innerHTML="<div class='hint'>Bitte zuerst eine Schule wählen.</div>";return;}
+    if(!STATE.school){
+      wrap.innerHTML="<div class='hint'>Bitte zuerst auf der Hauptseite eine Schule wählen.</div>";
+      return;
+    }
     if(STATE.trainings.length===0){
       wrap.innerHTML="<div class='hint'>Keine Trainingszeiten eingetragen.</div>";
       return;
@@ -171,53 +190,81 @@
     };
   }
 
-  // ---------- Setup Dropdown ----------
-  async function setupSchools(group){
-    const snap=await db.collection('Schulen').doc(group).get();
-    const sel=$('schoolSelect');
-    sel.innerHTML='<option value="">— Schule wählen —</option>';
-    let list=[];
-    if(snap.exists){
-      const d=snap.data();
-      list=(Array.isArray(d.School)?d.School:Array.isArray(d.schools)?d.schools:[]);
-    }
-    list.forEach(s=>{
-      const o=document.createElement('option'); o.value=s.toLowerCase(); o.textContent=s; sel.appendChild(o);
-    });
-    sel.onchange=async()=>{
-      const v=sel.value;
-      STATE.school=v;
-      if(!v)return;
-      await loadTrainings(v);
-      if(STATE.canEdit) $('addTrainingBtn').style.display='inline-block';
-    };
-  }
-
-  // ---------- Header Logos ----------
+  // ---------- Logos ----------
   function preloadAndSet(imgEl, url){
     const test = new Image();
     test.onload = ()=>{ imgEl.src = url; };
     test.onerror = ()=>{};
     test.src = url;
   }
+  function applyLogosForSchool(sch){
+    if(!sch || sch.toLowerCase()==='master') return;
+    const base = `logos/${sch.toLowerCase()}`;
+    preloadAndSet(document.getElementById('logo-left'), `${base}/logo-left.jpg`);
+    preloadAndSet(document.getElementById('logo-center'), `${base}/logo-center.jpg`);
+    preloadAndSet(document.getElementById('logo-right'), `${base}/logo-right.jpg`);
+  }
 
+  // ---------- Init: feste Schule aus der Hauptseite ----------
+  async function initFixedSchoolFlow(user){
+    // aktive Schule MUSS von der Hauptseite kommen
+    let active = (sessionStorage.getItem('activeSchool') || '').trim().toLowerCase();
+
+    // Fallback: ggf. alte Session-"school" verwenden
+    if(!active){
+      const fallback = (sessionStorage.getItem('school') || '').trim().toLowerCase();
+      if (fallback && fallback !== 'master') active = fallback;
+    }
+
+    // Kein aktiver Eintrag oder MASTER → Hinweis & optional Redirect
+    if(!active || active === 'master'){
+      $('schoolSelect').innerHTML = '<option value="">(keine Schule gewählt)</option>';
+      $('schoolSelect').disabled = true;
+      $('schedule').innerHTML = "<div class='hint'>Bitte zuerst auf der Hauptseite eine Schule auswählen.</div>";
+      // location.href = 'hauptseite.html'; // falls du direkt zurück leiten willst, Zeile aktivieren
+      return;
+    }
+
+    // Dropdown nur als Anzeige der fixen Schule
+    const sel = $('schoolSelect');
+    sel.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = active;
+    opt.textContent = active.toUpperCase(); // Anzeige – passe bei Bedarf an
+    sel.appendChild(opt);
+    sel.value = active;
+    sel.disabled = true;
+
+    STATE.school = active;
+
+    // Logos + Daten
+    applyLogosForSchool(active);
+    await loadTrainings(active);
+
+    // Edit-Button freigeben, wenn Rolle darf
+    if (STATE.canEdit) $('addTrainingBtn').style.display = 'inline-block';
+  }
+
+  // ---------- Auth ----------
   auth.onAuthStateChanged(async user=>{
     if(!user){location.href='index.html';return;}
-    const r=await db.collection('rollen').doc(user.uid).get();
-    let role='user', school='MASTER';
-    if(r.exists){ const d=r.data(); role=d.role?.toLowerCase()||'user'; school=d.school||'MASTER'; }
-    STATE.role=role;
-    STATE.canEdit=(role==='admin'||role==='si-fu');
-    await setupSchools(school);
-
-    // Header-Logos
-    let activeSchool = (sessionStorage.getItem('activeSchool') || school || 'master').toLowerCase();
-    if(activeSchool !== 'master'){
-      const base = `logos/${activeSchool}`;
-      preloadAndSet(document.getElementById('logo-left'), `${base}/logo-left.jpg`);
-      preloadAndSet(document.getElementById('logo-center'), `${base}/logo-center.jpg`);
-      preloadAndSet(document.getElementById('logo-right'), `${base}/logo-right.jpg`);
+    // Rolle lesen (nur für canEdit – Auswahl/Wechsel kommt NICHT mehr von hier)
+    try{
+      const r=await db.collection('rollen').doc(user.uid).get();
+      let role='user';
+      if(r.exists){
+        const d=r.data();
+        role = (d.role || 'user').toString().toLowerCase();
+      }
+      STATE.role = role;
+      STATE.canEdit = (role==='admin' || role==='si-fu' || role==='master');
+    }catch(e){
+      console.warn('Rolle konnte nicht geladen werden', e);
+      STATE.role = 'user'; STATE.canEdit = false;
     }
+
+    // Starte festen Schul-Flow (nur aktive Schule aus Hauptseite)
+    await initFixedSchoolFlow(user);
   });
 
   $('addTrainingBtn').onclick=addTrainingForm;
