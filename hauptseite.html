@@ -49,7 +49,8 @@
     .logout-btn:hover{background:#d22;}
     .settings-btn{
       background:transparent;color:var(--muted);
-      display:flex;align-items:center;gap:8px;justify-content:center;
+      display:none; /* ✨ Standardmäßig versteckt – wird nur bei Admins gezeigt */
+      align-items:center;gap:8px;justify-content:center;
       border:none;padding:10px;font-size:15px;cursor:pointer;width:100%;
     }
     .settings-btn:hover{color:#fff;transform:rotate(5deg);}
@@ -108,7 +109,6 @@
       <button onclick="location.href='schuluebersicht.html'">🏫 Schulübersicht</button>
       <button onclick="location.href='anleitungen.html'">📖 Anleitungen</button>
       <button onclick="location.href='checkliste.html'">✅ Checkliste</button>
-      <!-- ✅ NEU: Snackliste -->
       <button onclick="location.href='snackliste.html'">🍎 Snackliste</button>
     </div>
 
@@ -285,9 +285,17 @@ auth.onAuthStateChanged(async user=>{
   const pill=document.getElementById('activeRolePill');
   pill.textContent='Rolle: '+(role||'–');
   pill.style.display='inline-block';
+
   const isAdminLike=['admin','si-fu'].includes(role);
-  if(isAdminLike) document.getElementById('adminToggle').style.display='flex';
-  if(isAdminLike) document.getElementById('newsTickerBtn').style.display='block';
+  // Admin-Menü + Newsticker nur für Admins
+  if(isAdminLike){
+    document.getElementById('adminToggle').style.display='flex';
+    document.getElementById('newsTickerBtn').style.display='block';
+  }
+  // ⚙️ Einstellungen nur für Admins sichtbar
+  const settingsBtn=document.getElementById('settingsBtn');
+  settingsBtn.style.display = isAdminLike ? 'flex' : 'none';
+
   document.getElementById('newsTickerBtn').onclick=()=>location.href='newsticker.html';
 
   const planBtn=document.getElementById('planBtn');

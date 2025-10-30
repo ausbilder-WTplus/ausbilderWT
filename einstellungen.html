@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Einstellungen</title>
   <style>
-    :root { --bg:#000; --text:#fff; --card:#fff; }
+    :root { --bg:#000; --text:#fff; --card:#0e0e0e; --border:#2a2a2a; --muted:#aaa; --accent:#fff; }
     * { box-sizing:border-box; }
     body {
       margin:0; background:var(--bg); color:var(--text);
@@ -27,10 +27,36 @@
     /* Inhalt */
     .wrap{
       flex:1; display:flex; flex-direction:column; align-items:center;
-      gap:24px; padding:16px;
+      gap:24px; padding:16px; max-width:980px; width:100%; margin:0 auto;
     }
     h2{ margin:0; color:#fff; }
-    p{ color:#aaa; font-size:16px; }
+    p{ color:var(--muted); font-size:16px; }
+
+    /* Cards */
+    .card{
+      width:100%;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:16px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+    }
+    .card h3{ margin:0 0 8px; font-size:20px; }
+    .section-row{ display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; margin-top:10px; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .pill{ border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size:14px; }
+    input[type="text"]{
+      background:#000; color:#fff; border:1px solid var(--border);
+      border-radius:10px; padding:10px 12px; width:100%;
+    }
+    button{
+      background:var(--accent); color:#000; border:none; border-radius:10px;
+      padding:10px 14px; font-weight:bold; cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    button.ghost{ background:transparent; color:#fff; border:1px solid var(--border); box-shadow:none; }
+    .list{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .hint{ font-size:13px; color:var(--muted); margin-top:6px; }
 
     /* Home-Button */
     .home-btn{
@@ -40,6 +66,9 @@
       z-index:1000;
     }
     .home-btn img{ width:32px; height:32px; display:block; }
+
+    /* Admin-Guard-Info */
+    .guard{ padding:12px; background:#180000; border:1px solid #331111; border-radius:10px; }
   </style>
 </head>
 <body>
@@ -51,9 +80,41 @@
   </div>
 
   <!-- Inhalt -->
-  <div class="wrap">
+  <div class="wrap" id="wrap">
     <h2>Einstellungen</h2>
-    <p>Hier kannst du zukünftig weitere Optionen anpassen.</p>
+    <p>Verwalte hier gruppenbezogene Optionen.</p>
+
+    <!-- Admin-Guard Nachricht (wird bei Redirect kurz sichtbar, falls langsam) -->
+    <div id="guardMsg" class="guard" style="display:none;">
+      Du benötigst Admin-Rechte, um diese Seite zu sehen.
+    </div>
+
+    <!-- Schulverwaltung -->
+    <div class="card" id="schoolAdmin" style="display:none;">
+      <h3>Schulverwaltung</h3>
+      <p class="hint">Gruppe: <span id="groupLabel">–</span></p>
+
+      <div>
+        <strong>Schulen in deiner Gruppe</strong>
+        <div id="schoolsList" class="list"></div>
+      </div>
+
+      <div class="section-row">
+        <input type="text" id="newSchoolInput" placeholder="Neue Schule hinzufügen (z. B. Degenhardt)" />
+        <button id="addSchoolBtn">Hinzufügen</button>
+      </div>
+      <p class="hint">Tipp: Namen eindeutig wählen. Groß-/Kleinschreibung wird normalisiert.</p>
+    </div>
+
+    <!-- Gruppenverwaltung (nur MASTER) -->
+    <div class="card" id="groupAdmin" style="display:none;">
+      <h3>Gruppenverwaltung (MASTER)</h3>
+      <div class="section-row">
+        <input type="text" id="newGroupInput" placeholder="Neue Gruppe anlegen (z. B. NORD)" />
+        <button id="addGroupBtn">Gruppe anlegen</button>
+      </div>
+      <p class="hint">Erzeugt einen Eintrag in <code>Schulen/&lt;gruppe&gt;</code> mit leerem <code>school</code>-Array.</p>
+    </div>
   </div>
 
   <!-- Home -->
@@ -78,7 +139,17 @@
     const db = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-    // ---------- Header-Logo-Logik (nutzt activeSchool; Fallback: school/Firestore) ----------
+    // ---------- Utils ----------
+    const normalize = (r)=>{
+      r=(r||'').toLowerCase();
+      if(['administrator','admins','adminstrator'].includes(r))r='admin';
+      if(['trainer/in','trainerin','coach'].includes(r))r='trainer';
+      if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r))r='si-fu';
+      return r;
+    };
+    const uc = s => String(s||'').trim().toUpperCase();
+    const sclean = s => String(s||'').trim();
+
     function preloadAndSet(img, url, fallback){
       if(!img) return;
       const test = new Image();
@@ -100,28 +171,149 @@
       preloadAndSet(right,  `${base}/logo-right.jpg`,  `${masterBase}/logo-right.jpg`);
     }
 
+    // Schulen-Daten aus Collection "Schulen"
+    function parseSchoolsData(d){
+      if(!d) return [];
+      // bevorzugt: 'school' (neues Feld, Array)
+      if(Array.isArray(d.school)) return d.school;
+      if(typeof d.school === 'string') return d.school.split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
+
+      // Abwärtskompatibilität
+      if(Array.isArray(d.School)) return d.School;
+      if(typeof d.School==='string') return d.School.split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
+
+      if(Array.isArray(d.schools)) return d.schools;
+      if(typeof d.schools==='string') return d.schools.split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
+      return [];
+    }
+
+    async function loadGroupSchools(groupKey){
+      const tries=[groupKey, groupKey?.toUpperCase(), groupKey?.charAt(0)?.toUpperCase()+groupKey?.slice(1)?.toLowerCase(), groupKey?.toLowerCase()].filter(Boolean);
+      for(const k of tries){
+        const snap = await db.collection('Schulen').doc(k).get().catch(()=>null);
+        if(snap && snap.exists){
+          return { id: snap.id, schools: parseSchoolsData(snap.data()) };
+        }
+      }
+      return { id: uc(groupKey), schools: [] };
+    }
+
+    async function addSchoolToGroup(groupId, schoolName){
+      const clean = sclean(schoolName);
+      if(!clean) throw new Error('Kein Schulname angegeben.');
+      const ref = db.collection('Schulen').doc(groupId);
+      // ✨ ab jetzt schreiben wir NUR nach 'school' (Array)
+      await ref.set({ school: firebase.firestore.FieldValue.arrayUnion(clean) }, { merge:true });
+      return true;
+    }
+
+    async function createGroup(groupId){
+      const gid = uc(groupId);
+      if(!gid) throw new Error('Kein Gruppenname angegeben.');
+      const ref = db.collection('Schulen').doc(gid);
+      // ✨ neues Doc mit leerem 'school'-Array
+      await ref.set({ school: [] }, { merge:true });
+      return gid;
+    }
+
+    function renderChips(container, items){
+      container.innerHTML = '';
+      if(!items || items.length===0){
+        const p=document.createElement('p'); p.className='hint'; p.textContent='Noch keine Schulen hinterlegt.'; container.appendChild(p); return;
+      }
+      items.forEach(name=>{
+        const span=document.createElement('span');
+        span.className='pill';
+        span.textContent=name;
+        container.appendChild(span);
+      });
+    }
+
+    // ---------- Page Logic with Auth & Role Guard ----------
     auth.onAuthStateChanged(async (user) => {
       if (!user) { location.href = "index.html"; return; }
 
       try {
-        // 1) aktive Schule von der Hauptseite
-        let school = (sessionStorage.getItem('activeSchool') || '').trim().toLowerCase();
+        // Session / Fallback
+        let role = normalize(sessionStorage.getItem('role'));
+        let baseSchool = (sessionStorage.getItem('school') || '').trim();
 
-        // 2) Fallback: ältere Session "school" oder Firestore
-        if (!school) {
-          school = (sessionStorage.getItem('school') || '').trim().toLowerCase();
-        }
-        if (!school) {
+        if(!role || !baseSchool){
           const snap = await db.collection('rollen').doc(user.uid).get();
           if (snap.exists) {
-            school = (snap.data().school || '').toLowerCase();
-            sessionStorage.setItem('school', school);
+            const d=snap.data()||{};
+            role = normalize(d.role);
+            baseSchool = (d.school || '').trim();
+            sessionStorage.setItem('role', role);
+            sessionStorage.setItem('school', baseSchool);
           }
         }
 
-        await applyHeaderBySchool(school || 'master');
+        // Admin-Guard
+        const isAdminLike = ['admin','si-fu'].includes(role);
+        if(!isAdminLike){
+          document.getElementById('guardMsg').style.display='block';
+          // kurzer Moment Info zeigen, dann zurück
+          setTimeout(()=>location.href='hauptseite.html', 800);
+          return;
+        }
+
+        // Header nach aktiver Schule
+        let activeSchool = (sessionStorage.getItem('activeSchool') || baseSchool || 'master').toLowerCase();
+        await applyHeaderBySchool(activeSchool || 'master');
+
+        // Schulverwaltung anzeigen
+        const schoolCard = document.getElementById('schoolAdmin');
+        schoolCard.style.display='block';
+
+        // Gruppe ermitteln (deine "Basisschule" == Gruppenschlüssel, z.B. MASTER)
+        const groupKey = uc(baseSchool || 'MASTER');
+        document.getElementById('groupLabel').textContent = groupKey;
+
+        // Schulen laden
+        const { id: groupId, schools } = await loadGroupSchools(groupKey);
+        renderChips(document.getElementById('schoolsList'), schools);
+
+        // Hinzufügen-Handler
+        document.getElementById('addSchoolBtn').onclick = async ()=>{
+          const inp = document.getElementById('newSchoolInput');
+          const name = sclean(inp.value);
+          if(!name) { alert('Bitte einen Schulnamen eingeben.'); return; }
+          try{
+            await addSchoolToGroup(groupId, name);
+            const fresh = await loadGroupSchools(groupKey);
+            renderChips(document.getElementById('schoolsList'), fresh.schools);
+            inp.value='';
+          }catch(e){
+            console.error(e);
+            alert('Fehler beim Hinzufügen: ' + (e?.message||e));
+          }
+        };
+
+        // Gruppenverwaltung nur für MASTER
+        const groupAdminCard = document.getElementById('groupAdmin');
+        if(groupKey === 'MASTER'){
+          groupAdminCard.style.display='block';
+          document.getElementById('addGroupBtn').onclick = async ()=>{
+            const inp = document.getElementById('newGroupInput');
+            const gname = uc(inp.value);
+            if(!gname){ alert('Bitte einen Gruppennamen eingeben.'); return; }
+            try{
+              await createGroup(gname);
+              alert('Gruppe "'+gname+'" wurde angelegt.');
+              inp.value='';
+            }catch(e){
+              console.error(e);
+              alert('Fehler beim Anlegen der Gruppe: ' + (e?.message||e));
+            }
+          };
+        } else {
+          groupAdminCard.style.display='none';
+        }
+
       } catch (e) {
-        console.error('[Header/School]', e);
+        console.error('[Einstellungen]', e);
+        alert('Beim Laden der Einstellungen ist ein Fehler aufgetreten.');
       }
     });
   </script>
