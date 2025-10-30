@@ -7,9 +7,22 @@
   <style>
     body {
       margin:0; background:#000; color:#fff; font-family:Arial,Helvetica,sans-serif;
-      display:flex; flex-direction:column; align-items:center; padding:20px;
+      display:flex; flex-direction:column; align-items:center;
     }
-    .top-bar{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:900px;flex-wrap:wrap;gap:10px;}
+    /* HEADER */
+    .header{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; gap:12px; border-bottom:1px solid #222; width:100%;
+    }
+    .header img{ height:70px; width:auto; object-fit:contain; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
+
+    .top-bar{
+      display:flex;justify-content:space-between;align-items:center;
+      width:100%;max-width:900px;flex-wrap:wrap;gap:10px;
+      padding:20px;
+    }
     .btn{
       background:#fff;color:#000;border:none;border-radius:8px;
       padding:8px 12px;font-weight:bold;cursor:pointer;
@@ -18,7 +31,7 @@
     select, input[type="text"], input[type="time"]{
       background:#111;color:#fff;border:1px solid #333;border-radius:8px;padding:6px 8px;
     }
-    .wrap{max-width:900px;width:100%;margin-top:20px;}
+    .wrap{max-width:900px;width:100%;margin-top:10px;padding:0 20px 40px;}
     .card{
       background:#111;border:1px solid #333;border-radius:10px;
       padding:12px 16px;margin-bottom:10px;
@@ -29,6 +42,14 @@
   </style>
 </head>
 <body>
+
+  <!-- HEADER -->
+  <div class="header" id="header">
+    <img id="logo-left" src="pluslogo.png" alt="Logo links">
+    <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
+  </div>
+
   <div class="top-bar">
     <h1>Trainingszeiten</h1>
     <select id="schoolSelect"></select>
@@ -36,10 +57,12 @@
   </div>
   <div id="schedule" class="wrap"></div>
 
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
+
   <script>
   if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
   const auth=firebase.auth();
@@ -170,7 +193,14 @@
     };
   }
 
-  // ---------- Init ----------
+  // ---------- Header Logos ----------
+  function preloadAndSet(imgEl, url){
+    const test = new Image();
+    test.onload = ()=>{ imgEl.src = url; };
+    test.onerror = ()=>{};
+    test.src = url;
+  }
+
   auth.onAuthStateChanged(async user=>{
     if(!user){location.href='index.html';return;}
     const r=await db.collection('rollen').doc(user.uid).get();
@@ -179,6 +209,15 @@
     STATE.role=role;
     STATE.canEdit=(role==='admin'||role==='si-fu');
     await setupSchools(school);
+
+    // Header-Logos
+    let activeSchool = (sessionStorage.getItem('activeSchool') || school || 'master').toLowerCase();
+    if(activeSchool !== 'master'){
+      const base = `logos/${activeSchool}`;
+      preloadAndSet(document.getElementById('logo-left'), `${base}/logo-left.jpg`);
+      preloadAndSet(document.getElementById('logo-center'), `${base}/logo-center.jpg`);
+      preloadAndSet(document.getElementById('logo-right'), `${base}/logo-right.jpg`);
+    }
   });
 
   $('addTrainingBtn').onclick=addTrainingForm;
