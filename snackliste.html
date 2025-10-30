@@ -14,17 +14,14 @@
       -webkit-font-smoothing:antialiased;
     }
 
-    /* Header */
+    /* Header (3 Logos, Master als Logofallback) */
     .header{
       display:flex; justify-content:space-between; align-items:center;
-      padding:12px 16px; gap:12px;
+      padding:12px 16px; gap:12px; border-bottom:1px solid rgba(255,255,255,.12);
     }
-    .header img{ height:80px; width:auto; object-fit:contain; }
-    .header .master-label{
-      flex:1; text-align:center; font-size:48px; font-weight:bold; letter-spacing:4px;
-    }
-    @media (max-width:750px){ .header img{ height:44px; } .header .master-label{ font-size:32px; } }
-    @media (max-width:480px){ .header img{ height:40px; } .header .master-label{ font-size:26px; } }
+    .header img{ height:80px; width:auto; object-fit:contain; transition:opacity .3s ease; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
 
     /* Inhalt */
     .wrap{
@@ -74,11 +71,12 @@
     .free { color:#0a7f00; font-weight:bold; }
     .note-input { width:100%; border:1px solid #ddd; border-radius:8px; padding:8px; }
 
-    /* Home-Button */
+    /* Home-Button (runde, weiße FAB links unten) */
     .home-btn{
       position:fixed; left:18px; bottom:18px; border:none;
       background:#fff; color:#000; border-radius:50%;
       padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35);
+      z-index:1000;
     }
     .home-btn img{ width:32px; height:32px; display:block; }
 
@@ -88,11 +86,11 @@
   </style>
 </head>
 <body>
-  <!-- Header -->
+  <!-- Header (Master-Logos als Default; JS setzt je Schule um) -->
   <div class="header" id="header">
-    <img id="logo-left" src="pluslogo.png" alt="Logo links">
-    <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
-    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
+    <img id="logo-left"   src="logos/master/logo-left.jpg"   alt="Logo links">
+    <img id="logo-center" src="logos/master/logo-center.jpg" alt="Logo Mitte">
+    <img id="logo-right"  src="logos/master/logo-right.jpg"  alt="Logo rechts">
   </div>
 
   <div class="wrap">
@@ -132,20 +130,34 @@
     /* =========================
        Firebase Init (zentral)
        ========================= */
-    firebase.initializeApp(window.firebaseConfig);
+    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
     /* =========================
-       Header: Logos nach Schule (inkl. MASTER)
+       Header: einheitliche 3-Logo-Logik
        ========================= */
-    function preloadAndSet(imgEl, url){
-      const test = new Image();
-      test.onload = ()=>{ imgEl.src = url; };
-      test.onerror = ()=>{}; // Fallback: ursprüngliches src bleibt
-      test.src = url;
+    function preloadAndSet(img, url, fallback){
+      if (!img) return;
+      const t = new Image();
+      t.onload = ()=>{ img.src = url; img.style.opacity='1'; };
+      t.onerror = ()=>{ if (fallback) img.src = fallback; };
+      img.style.opacity = '0.3';
+      t.src = url;
     }
+    function applyHeaderBySchool(school){
+      const left   = document.getElementById('logo-left');
+      const center = document.getElementById('logo-center');
+      const right  = document.getElementById('logo-right');
+      const masterBase = 'logos/master';
+      const key = String(school||'master').toLowerCase();
+      const base = key !== 'master' ? `logos/${key}` : masterBase;
+      preloadAndSet(left,   `${base}/logo-left.jpg`,   `${masterBase}/logo-left.jpg`);
+      preloadAndSet(center, `${base}/logo-center.jpg`, `${masterBase}/logo-center.jpg`);
+      preloadAndSet(right,  `${base}/logo-right.jpg`,  `${masterBase}/logo-right.jpg`);
+    }
+    const normSchool = s => String(s||'MASTER').trim().toLowerCase();
 
     /* =========================
        Helpers
@@ -166,6 +178,13 @@
       d.setDate(d.getDate() + diff);
       return d;
     }
+
+    /* =========================
+       Schulkontext & Collection Helper (pro Schule!)
+       snacks/{schoolKey}/items/{dateId}
+       ========================= */
+    let CURRENT_SCHOOL = 'master';
+    const SNACKS = () => db.collection('snacks').doc(CURRENT_SCHOOL).collection('items');
 
     /* =========================
        Termin hinzufügen (nur Fr/So)
@@ -195,7 +214,7 @@
       }
 
       const id = toDateId(d);
-      const ref = db.collection("snacks").doc(id);
+      const ref = SNACKS().doc(id); // <-- pro Schule
 
       msg("Leeren Termin anlegen …");
       try {
@@ -217,14 +236,14 @@
     });
 
     /* =========================
-       Liste rendern (nur kommende Termine)
+       Liste rendern (nur kommende Termine, pro Schule)
        ========================= */
     async function renderList(user){
       const container = $("#list");
       container.innerHTML = "";
 
       const today = startOfDay(new Date());
-      let q = db.collection("snacks")
+      let q = SNACKS()
                 .where("date", ">=", firebase.firestore.Timestamp.fromDate(today))
                 .orderBy("date", "asc")
                 .limit(30);
@@ -273,7 +292,7 @@
           btn.onclick = ()=> releaseSlot(doc.id);
           note.disabled = false;
           note.addEventListener("change", ()=>{
-            db.collection("snacks").doc(doc.id).update({
+            SNACKS().doc(doc.id).update({  // <-- pro Schule
               note: note.value,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }).then(()=> msg("Notiz gespeichert.", true))
@@ -293,14 +312,14 @@
     }
 
     /* =========================
-       Claim / Release
+       Claim / Release (pro Schule)
        ========================= */
     async function claimSlot(id, dateObj, noteValue){
       msg("Trage dich ein …");
       const user = auth.currentUser;
       if (!user){ location.href = "index.html"; return; }
 
-      const ref = db.collection("snacks").doc(id);
+      const ref = SNACKS().doc(id); // <-- pro Schule
       try {
         await db.runTransaction(async (tx)=>{
           const snap = await tx.get(ref);
@@ -325,7 +344,7 @@
       const user = auth.currentUser;
       if (!user){ location.href = "index.html"; return; }
 
-      const ref = db.collection("snacks").doc(id);
+      const ref = SNACKS().doc(id); // <-- pro Schule
       try {
         await db.runTransaction(async (tx)=>{
           const snap = await tx.get(ref);
@@ -350,40 +369,31 @@
     }
 
     /* =========================
-       Auth-Flow + Header setzen
+       Auth-Flow + aktiver Schulkontext + Header setzen
        ========================= */
     auth.onAuthStateChanged(async (user)=>{
       if (!user) { location.href = "index.html"; return; }
       $("#userInfo").textContent = user.email || "";
 
-      // Header-Logos nach Schule
-      try{
-        let school = (sessionStorage.getItem('school') || '').toLowerCase();
-        if (!school){
+      // Aktive Schule: bevorzugt 'activeSchool' (von Hauptseite), sonst 'school', sonst Firestore
+      let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').trim().toLowerCase();
+      if (!school){
+        try{
           const snap = await db.collection('rollen').doc(user.uid).get();
           if (snap.exists){
             school = (snap.data().school || '').toLowerCase();
             sessionStorage.setItem('school', school);
           }
+        }catch(e){
+          console.warn('[rollen] Fallback fehlgeschlagen', e);
         }
-
-        const header = document.getElementById('header');
-        const logoLeft   = document.getElementById('logo-left');
-        const logoCenter = document.getElementById('logo-center');
-        const logoRight  = document.getElementById('logo-right');
-
-        if (school === 'master') {
-          header.innerHTML = '<div class="master-label">MASTER</div>';
-        } else if (school) {
-          const base = `logos/${school}`;
-          preloadAndSet(logoCenter, `${base}/logo-center.jpg`);
-          preloadAndSet(logoLeft,   `${base}/logo-left.jpg`);
-          preloadAndSet(logoRight,  `${base}/logo-right.jpg`);
-        }
-      }catch(e){
-        console.error('[Header/School]', e);
       }
+      CURRENT_SCHOOL = normSchool(school || 'master');
 
+      // Header auf Schule setzen
+      applyHeaderBySchool(CURRENT_SCHOOL);
+
+      // Liste rendern (im Schul-Kontext)
       renderList(user);
     });
   </script>
