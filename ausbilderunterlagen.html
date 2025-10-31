@@ -1,79 +1,66 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Ausbilderunterlagen</title>
   <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: url("kids.png") no-repeat center center fixed;
-      background-size: cover;
-      color: black;
-      text-align: center;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
+    :root { --bg:#000; --text:#fff; --accent-bg:#fff; --accent-text:#000; }
+    * { box-sizing:border-box; }
+    body{
+      margin:0; font-family:Arial, Helvetica, sans-serif;
+      background:var(--bg); color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      min-height:100vh; display:flex; flex-direction:column;
     }
-    .viewer-wrap {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 16px;
-      backdrop-filter: blur(0px);
+
+    /* ===== Header (3 Logos, responsive) ===== */
+    .header{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; gap:12px;
     }
-    .viewer {
-      width: 95%;
-      max-width: 1100px;
-      height: 70vh;
-      background: rgba(255,255,255,0.9);
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-      border: 1px solid rgba(0,0,0,0.1);
+    .header img{ height:80px; width:auto; object-fit:contain; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
+
+    /* ===== Viewer ===== */
+    .viewer{
+      flex:1; display:flex; justify-content:center; align-items:center; padding:20px;
     }
-    .viewer iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      display: block;
-      background: #fff;
+    .viewer iframe{
+      width:100%; max-width:1000px; height:80vh;
+      border:none; border-radius:10px; background:#fff; /* ⚪ Weißer Hintergrund */
+      box-shadow:0 4px 16px rgba(0,0,0,.35);
     }
-    .home-btn {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      background: white;
-      border: none;
-      border-radius: 12px;
-      padding: 10px;
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+
+    /* ===== Home-Button ===== */
+    .home-btn{
+      position:fixed; left:18px; bottom:18px;
+      background:#fff; border:none; border-radius:50%;
+      padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35);
     }
-    .home-btn img { width: 32px; height: 32px; display: block; }
-    @media (max-width: 600px) { .viewer { height: 65vh; } }
+    .home-btn img{ width:32px; height:32px; display:block; }
   </style>
 </head>
 <body>
-
-  <!-- Eingebetteter Google-Drive-Ordner (LISTENANSICHT) -->
-  <div class="viewer-wrap">
-    <div class="viewer">
-      <iframe
-        src="https://drive.google.com/embeddedfolderview?id=19Gh0Vu8CiPyWJTxPHUB1GYmwwMJsXwNY#list"
-        referrerpolicy="no-referrer">
-      </iframe>
-    </div>
+  <!-- Header / Logos (Standard-Assets für MASTER) -->
+  <div class="header" id="header">
+    <img id="logo-left" src="pluslogo.png" alt="Logo links">
+    <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
   </div>
 
-  <!-- Home Button -->
-  <button class="home-btn" onclick="window.location.href='index.html'">
-    <img src="home.jpg" alt="Home" />
+  <!-- Webviewer: URL kommt aus Firestore -->
+  <div class="viewer">
+    <iframe id="unterlagenFrame" src="about:blank" title="Ausbilderunterlagen" allowfullscreen></iframe>
+  </div>
+
+  <!-- Home-Button -->
+  <button class="home-btn" onclick="location.href='hauptseite.html'">
+    <img src="home.jpg" alt="Home">
   </button>
 
-  <!-- Firebase SDKs (compat) -->
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
@@ -82,16 +69,103 @@
   <script src="firebase-config.js"></script>
 
   <script>
-    // Firebase init (zentral, genau einmal)
-    firebase.initializeApp(window.firebaseConfig);
-
+    // ---- Firebase init (nur einmal) ----
+    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
+    const db   = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-    // Auth-Guard: nur eingeloggte Nutzer dürfen diese Seite sehen
-    auth.onAuthStateChanged((user) => {
-      if (!user) {
-        location.href = "index.html";
+    // ---- Hilfsfunktionen ----
+    function preloadAndSet(imgEl, url){
+      const test = new Image();
+      test.onload = () => { imgEl.src = url; };
+      test.onerror = () => {}; 
+      test.src = url;
+    }
+
+    async function resolveSchool(user){
+      let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').trim().toLowerCase();
+      if (!school) {
+        try {
+          const snap = await db.collection('rollen').doc(user.uid).get();
+          if (snap.exists) {
+            school = (snap.data().school || '').toString().trim().toLowerCase();
+            if (school) sessionStorage.setItem('school', school);
+          }
+        } catch (e) { console.error('[resolveSchool]', e); }
+      }
+      return school || 'master';
+    }
+
+    function applyLogosForSchool(school){
+      const logoLeft   = document.getElementById('logo-left');
+      const logoCenter = document.getElementById('logo-center');
+      const logoRight  = document.getElementById('logo-right');
+      if (school !== 'master') {
+        const base = `logos/${school}`;
+        preloadAndSet(logoCenter, `${base}/logo-center.jpg`);
+        preloadAndSet(logoLeft,   `${base}/logo-left.jpg`);
+        preloadAndSet(logoRight,  `${base}/logo-right.jpg`);
+      }
+    }
+
+    async function getDocFlexible(col, key){
+      const tries = [
+        key,
+        key?.toUpperCase?.(),
+        key?.charAt?.(0)?.toUpperCase?.() + key?.slice?.(1)?.toLowerCase?.(),
+        key?.toLowerCase?.()
+      ].filter(Boolean);
+      for (const id of tries){
+        try{
+          const snap = await db.collection(col).doc(id).get();
+          if (snap.exists) return { snap, id };
+        }catch(e){}
+      }
+      return null;
+    }
+
+    async function loadUnterlagenIframeForSchool(schoolKey){
+      const frame = document.getElementById('unterlagenFrame');
+      if (!frame) return;
+
+      let doc = await getDocFlexible('links', schoolKey);
+      if (!doc) doc = await getDocFlexible('links', 'master');
+
+      let url = null;
+      if (doc){
+        const d = doc.snap.data() || {};
+        url =
+          d.ausbilderunterlagen ||
+          d.Ausbilderunterlagen ||
+          d.unterlagen ||
+          d.trainerunterlagen ||
+          d.docsUrl ||
+          d.docsURL ||
+          null;
+      }
+
+      if (url){
+        frame.src = url;
+      } else {
+        frame.src = 'about:blank';
+        alert(
+          'Kein Link gefunden. Bitte in Firestore unter "links/' +
+          schoolKey.toLowerCase() +
+          '" ein Feld "ausbilderunterlagen" (String-URL) anlegen.'
+        );
+      }
+    }
+
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) { location.href = "index.html"; return; }
+      try {
+        const school = await resolveSchool(user);
+        applyLogosForSchool(school);
+        await loadUnterlagenIframeForSchool(school);
+      } catch(e){
+        console.error('[Unterlagen/Init]', e);
+        alert('Fehler beim Laden der Ausbilderunterlagen.');
       }
     });
   </script>
