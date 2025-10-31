@@ -25,12 +25,16 @@
 
     /* ===== Viewer ===== */
     .viewer{
-      flex:1; display:flex; justify-content:center; align-items:center; padding:20px;
+      flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; padding:20px;
     }
     .viewer iframe{
       width:100%; max-width:1000px; height:80vh;
       border:none; border-radius:10px; background:#000;
       box-shadow:0 4px 16px rgba(0,0,0,.35);
+    }
+    .viewer .hint{
+      max-width:1000px; width:100%;
+      font-size:13px; color:#aaa;
     }
 
     /* ===== Home-Button (identisch) ===== */
@@ -50,9 +54,10 @@
     <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
   </div>
 
-  <!-- Webviewer: Google-Drive-Ordner -->
+  <!-- Webviewer: Google-Drive-Ordner (URL kommt aus Firestore) -->
   <div class="viewer">
-    <iframe src="https://drive.google.com/embeddedfolderview?id=143FgZ1ZIZo6hHTeOR6TwObpnkSBTIKki#grid" allowfullscreen></iframe>
+    <iframe id="bilderFrame" src="about:blank" title="Bilder" allowfullscreen></iframe>
+    <div id="bilderHint" class="hint"></div>
   </div>
 
   <!-- Home-Button (weiß, rund, unten links) -->
@@ -114,14 +119,62 @@
       // Bei master bleiben die Standardbilder.
     }
 
-    // ---- Login-Guard + Header-Logik ----
+    // Flexible Doc-Suche (wie auf deiner Hauptseite)
+    async function getDocFlexible(col, key){
+      const tries = [
+        key,
+        key?.toUpperCase?.(),
+        key?.charAt?.(0)?.toUpperCase?.() + key?.slice?.(1)?.toLowerCase?.(),
+        key?.toLowerCase?.()
+      ].filter(Boolean);
+      for (const id of tries){
+        try{
+          const snap = await db.collection(col).doc(id).get();
+          if (snap.exists) return { snap, id };
+        }catch(e){}
+      }
+      return null;
+    }
+
+    // Bilder-Link laden: links/<schule>/bilder  (Feld-Varianten unterstützt)
+    async function loadBilderIframeForSchool(schoolKey){
+      const frame = document.getElementById('bilderFrame');
+      const hint  = document.getElementById('bilderHint');
+      if (!frame) return;
+
+      hint.textContent = '';
+
+      // 1) Versuche die gewünschte Schule
+      let doc = await getDocFlexible('links', schoolKey);
+
+      // 2) Fallback: master
+      if (!doc) doc = await getDocFlexible('links', 'master');
+
+      let url = null;
+      if (doc){
+        const d = doc.snap.data() || {};
+        url = d.bilder || d.Bilder || d.bilderUrl || d.bilderURL || d.driveBilder || null;
+      }
+
+      if (url){
+        frame.src = url;
+              }else{
+        frame.src = 'about:blank';
+        hint.innerHTML = 'Kein Bilder-Link gefunden. ';
+      }
+    }
+
+    // ---- Login-Guard + Header- & Iframe-Logik ----
     auth.onAuthStateChanged(async (user) => {
       if (!user) { location.href = "index.html"; return; }
       try {
         const school = await resolveSchool(user);
         applyLogosForSchool(school);
+        await loadBilderIframeForSchool(school);
       } catch(e){
-        console.error('[Header/School]', e);
+        console.error('[Bilder/Init]', e);
+        const hint  = document.getElementById('bilderHint');
+        if (hint) hint.textContent = 'Fehler beim Laden der Bilder-Quelle.';
       }
     });
   </script>
