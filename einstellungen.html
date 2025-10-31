@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Einstellungen</title>
   <style>
-    :root { --bg:#000; --text:#fff; --card:#0e0e0e; --border:#2a2a2a; --muted:#aaa; --accent:#fff; }
+    :root { --bg:#000; --text:#fff; --card:#0e0e0e; --border:#2a2a2a; --muted:#aaa; --accent:#fff; --red:#f44; --green:#3c3; }
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--text);
       font-family: Arial, Helvetica, sans-serif; min-height:100vh; display:flex; flex-direction:column; }
@@ -23,10 +23,13 @@
     .section-row{ display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; margin-top:10px; }
     .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .pill{ border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size:14px; }
-    input[type="text"], select{ background:#000; color:#fff; border:1px solid var(--border);
-      border-radius:10px; padding:10px 12px; }
+    input[type="text"], input[type="email"], input[type="password"], select, textarea{
+      background:#000; color:#fff; border:1px solid var(--border);
+      border-radius:10px; padding:10px 12px;
+    }
     button{ background:var(--accent); color:#000; border:none; border-radius:10px;
       padding:10px 14px; font-weight:bold; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35); }
+    .btn.ghost{ background:transparent; color:#fff; border:1px solid var(--border); box-shadow:none; }
     .hint{ font-size:13px; color:var(--muted); margin-top:6px; }
     .list{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
     .guard{ padding:12px; background:#180000; border:1px solid #331111; border-radius:10px; }
@@ -40,6 +43,44 @@
     .home-btn:hover{ transform:translateY(-1px) scale(1.04); box-shadow:0 8px 22px rgba(0,0,0,.45); }
     .home-btn:active{ transform:translateY(0) scale(0.98); box-shadow:0 4px 14px rgba(0,0,0,.3); }
     .home-btn img{ width:22px; height:22px; display:block; pointer-events:none; }
+
+    /* Auf/Zu Panels */
+    .card-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .chev-btn{
+      background:transparent; color:#fff; border:1px solid var(--border);
+      width:36px; height:36px; border-radius:10px; display:grid; place-items:center;
+      cursor:pointer; transition:transform .12s ease, box-shadow .12s ease;
+    }
+    .chev-btn:hover{ box-shadow:0 2px 10px rgba(0,0,0,.35); }
+    .chev{ display:inline-block; font-size:16px; line-height:1; transition:transform .2s ease; }
+    .chev-btn[aria-expanded="true"] .chev{ transform:rotate(180deg); } /* ▼ → ▲ */
+    .collapsible-body{ margin-top:10px; }
+    [hidden]{ display:none !important; }
+
+    /* Links-Liste */
+    .links-grid{
+      display:grid; grid-template-columns:220px 1fr; gap:10px; align-items:flex-start; margin-top:8px;
+    }
+    .links-grid .field-name{ font-weight:bold; color:#fff; }
+    .links-grid .field-value{ width:100%; }
+    .field-dirty{ border-color:#8888ff !important; outline: 0; box-shadow: 0 0 0 3px rgba(120,120,255,.25); }
+    .savebar{
+      display:none; justify-content:flex-end; align-items:center; gap:8px; margin-top:10px;
+      border-top:1px dashed var(--border); padding-top:10px;
+    }
+    .badge{
+      border:1px solid var(--border); background:#0b0b0b; color:#fff; border-radius:999px;
+      padding:6px 10px; font-size:13px;
+    }
+    .btn.danger{ background:var(--red); color:#fff; }
+    @media (max-width:640px){ .links-grid{ grid-template-columns:1fr; } }
+
+    /* Subcard (UID abrufen) */
+    .subcard{
+      background:#0a0a0a; border:1px dashed var(--border); border-radius:12px; padding:12px; margin-top:12px;
+    }
+    .subcard-head{ display:flex; align-items:center; justify-content:space-between; }
+    .copy-btn{ background:#222; color:#fff; border:1px solid var(--border); }
   </style>
 </head>
 <body>
@@ -54,41 +95,124 @@
     <p>Verwalte hier gruppenbezogene Optionen.</p>
 
     <div id="guardMsg" class="guard" style="display:none;">Du benötigst Admin-Rechte, um diese Seite zu sehen.</div>
+    <div id="groupGuardMsg" class="guard" style="display:none;">
+      Du bist einer <strong>Einzelschule</strong> zugeordnet. Diese Seite ist nur für <strong>Gruppen</strong> (oder MASTER) verfügbar.
+    </div>
 
     <!-- Schulverwaltung -->
     <div class="card" id="schoolAdmin" style="display:none;">
-      <h3>Schulverwaltung</h3>
-
-      <!-- Nur für MASTER sichtbar: Gruppen-Wechsler -->
-      <div id="groupSwitchRow" class="row" style="display:none;">
-        <label for="groupSwitch">Gruppe wählen:</label>
-        <select id="groupSwitch" aria-label="Gruppe wählen"></select>
-        <button id="reloadGroupsBtn" class="ghost" type="button" title="Neu laden">Neu laden</button>
+      <div class="card-head">
+        <h3>Schulverwaltung</h3>
+        <button id="toggleSchool" class="chev-btn" aria-controls="schoolAdminBody" aria-expanded="false" title="Aufklappen"><span class="chev" aria-hidden="true">▼</span></button>
       </div>
-
-      <p class="hint">Aktive Gruppe: <span id="groupLabel">–</span></p>
-
-      <div>
-        <strong>Schulen in der aktiven Gruppe</strong>
-        <div id="schoolsList" class="list"></div>
+      <div id="schoolAdminBody" class="collapsible-body" hidden>
+        <div id="groupSwitchRow" class="row" style="display:none;">
+          <label for="groupSwitch">Gruppe wählen:</label>
+          <select id="groupSwitch" aria-label="Gruppe wählen"></select>
+          <button id="reloadGroupsBtn" class="ghost" type="button" title="Neu laden">Neu laden</button>
+        </div>
+        <p class="hint">Aktive Gruppe: <span id="groupLabel">–</span></p>
+        <div>
+          <strong>Schulen in der aktiven Gruppe</strong>
+          <div id="schoolsList" class="list"></div>
+        </div>
+        <div class="section-row">
+          <input type="text" id="newSchoolInput" placeholder="Neue Schule hinzufügen (z. B. Degenhardt)" />
+          <button id="addSchoolBtn">Hinzufügen</button>
+        </div>
+        <p class="hint">Tipp: Namen eindeutig wählen. Groß-/Kleinschreibung wird normalisiert.</p>
       </div>
-
-      <div class="section-row">
-        <input type="text" id="newSchoolInput" placeholder="Neue Schule hinzufügen (z. B. Degenhardt)" />
-        <button id="addSchoolBtn">Hinzufügen</button>
-      </div>
-      <p class="hint">Tipp: Namen eindeutig wählen. Groß-/Kleinschreibung wird normalisiert. (Feld <code>School</code>)</p>
     </div>
 
     <!-- Gruppenverwaltung (nur MASTER) -->
     <div class="card" id="groupAdmin" style="display:none;">
-      <h3>Gruppenverwaltung (MASTER)</h3>
-      <div class="section-row">
-        <input type="text" id="newGroupInput" placeholder="Neue Gruppe anlegen (z. B. NORD)" />
-        <button id="addGroupBtn">Gruppe anlegen</button>
+      <div class="card-head">
+        <h3>Gruppenverwaltung (MASTER)</h3>
+        <button id="toggleGroup" class="chev-btn" aria-controls="groupAdminBody" aria-expanded="false" title="Aufklappen"><span class="chev" aria-hidden="true">▼</span></button>
       </div>
-      <p class="hint">Erzeugt einen Eintrag in <code>Schulen/&lt;gruppe&gt;</code> mit leerer <code>School</code>-Liste.</p>
+      <div id="groupAdminBody" class="collapsible-body" hidden>
+        <div class="section-row">
+          <input type="text" id="newGroupInput" placeholder="Neue Gruppe anlegen (z. B. NORD)" />
+          <button id="addGroupBtn">Gruppe anlegen</button>
+        </div>
+        <p class="hint">Erzeugt einen Eintrag in <code>Schulen/&lt;gruppe&gt;</code> mit leerer Liste.</p>
+      </div>
     </div>
+
+    <!-- Links -->
+    <div class="card" id="linksAdmin" style="display:none;">
+      <div class="card-head">
+        <h3>Links</h3>
+        <button id="toggleLinks" class="chev-btn" aria-controls="linksAdminBody" aria-expanded="false" title="Aufklappen"><span class="chev" aria-hidden="true">▼</span></button>
+      </div>
+      <div id="linksAdminBody" class="collapsible-body" hidden>
+        <div class="row" style="margin-bottom:6px;">
+          <label for="linksSchoolSelect">Schule wählen:</label>
+          <select id="linksSchoolSelect" aria-label="Schule wählen"></select>
+          <button id="reloadLinksSchools" class="ghost" type="button" title="Neu laden">Neu laden</button>
+        </div>
+
+        <div id="linksList"></div>
+        <p id="linksEmptyHint" class="hint" style="display:none;">Keine Links gefunden.</p>
+
+        <div id="linksSaveBar" class="savebar">
+          <span id="linksDirtyBadge" class="badge">0 Änderungen</span>
+          <button id="linksResetBtn" class="btn ghost" type="button">Zurücksetzen</button>
+          <button id="linksSaveBtn" class="btn" type="button">Änderungen speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trainer Schulwechsel (UID) -->
+    <div class="card" id="trainerSwitch" style="display:none;">
+      <div class="card-head">
+        <h3>Trainer Schulwechsel</h3>
+        <button id="toggleTrainerSwitch" class="chev-btn" aria-controls="trainerSwitchBody" aria-expanded="false" title="Aufklappen"><span class="chev" aria-hidden="true">▼</span></button>
+      </div>
+      <div id="trainerSwitchBody" class="collapsible-body" hidden>
+        <div class="row">
+          <label for="trainerUidInput">UID des Trainers:</label>
+          <input id="trainerUidInput" type="text" placeholder="z. B. a1b2c3d4e5..." style="min-width:280px" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <label for="trainerSchoolSelect">Neue Schule:</label>
+          <select id="trainerSchoolSelect" aria-label="Neue Schule wählen"></select>
+          <button id="reloadTrainerSchools" class="ghost" type="button" title="Neu laden">Neu laden</button>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button id="confirmTrainerSwitch" class="btn">Bestätigen</button>
+        </div>
+
+        <!-- Untermenü: UID abrufen -->
+        <div class="subcard">
+          <div class="subcard-head">
+            <strong>UID abrufen</strong>
+            <button id="toggleUidFetcher" class="chev-btn" aria-controls="uidFetcherBody" aria-expanded="false" title="Aufklappen">
+              <span class="chev" aria-hidden="true">▼</span>
+            </button>
+          </div>
+          <div id="uidFetcherBody" class="collapsible-body" hidden>
+            <div class="row" style="margin-top:8px;">
+              <label for="uidEmail">E-Mail</label>
+              <input id="uidEmail" type="email" placeholder="user@example.com" style="min-width:260px" />
+            </div>
+            <div class="row" style="margin-top:6px;">
+              <label for="uidPassword">Passwort</label>
+              <input id="uidPassword" type="password" placeholder="••••••••" style="min-width:260px" />
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <button id="fetchUidBtn" class="btn">UID abrufen</button>
+            </div>
+            <div class="row" style="margin-top:8px;">
+              <input id="uidResult" type="text" readonly placeholder="UID erscheint hier" style="min-width:320px; flex:1;" />
+              <button id="copyUidBtn" class="copy-btn">Kopieren</button>
+            </div>
+            <p class="hint"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <button class="home-btn" onclick="location.href='hauptseite.html'" aria-label="Zur Startseite">
@@ -108,7 +232,7 @@
 
     const sclean = s => String(s||'').trim();
 
-    // Abwärtskompatibel lesen, bevorzugt 'School'
+    /* ===== Schul-/Gruppen-Helpers ===== */
     function parseSchoolsData(d){
       if(!d) return [];
       if(Array.isArray(d.School)) return d.School;
@@ -119,9 +243,7 @@
       if(typeof d.schools==='string') return d.schools.split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean);
       return [];
     }
-
     async function loadGroupSchools(groupKey){
-      // exakte ID zuerst probieren, dann Varianten
       const tries=[groupKey, groupKey?.toUpperCase(), groupKey?.charAt(0)?.toUpperCase()+groupKey?.slice(1)?.toLowerCase(), groupKey?.toLowerCase()].filter(Boolean);
       for(const k of tries){
         const snap=await db.collection('Schulen').doc(k).get().catch(()=>null);
@@ -131,92 +253,278 @@
       }
       return { id: groupKey, schools: [] };
     }
-
-    // *** Schreiben immer nach 'School' (Array) ***
     async function addSchoolToGroup(groupId, schoolName){
       const clean = sclean(schoolName);
       if(!clean) throw new Error('Kein Schulname angegeben.');
       await db.collection('Schulen').doc(groupId)
         .set({ School: firebase.firestore.FieldValue.arrayUnion(clean) }, { merge:true });
     }
-
     async function createGroup(groupId){
       const gid = sclean(groupId);
       if(!gid) throw new Error('Kein Gruppenname angegeben.');
       await db.collection('Schulen').doc(gid).set({ School: [] }, { merge:true });
       return gid;
     }
-
     function renderChips(container, items){
       container.innerHTML='';
-      if(!items || !items.length){
-        container.innerHTML = '<p class="hint">Noch keine Schulen hinterlegt.</p>';
-        return;
-      }
-      items.forEach(n=>{
-        const s=document.createElement('span');
-        s.className='pill';
-        s.textContent=n;
-        container.appendChild(s);
-      });
+      if(!items || !items.length){ container.innerHTML = '<p class="hint">Noch keine Schulen hinterlegt.</p>'; return; }
+      items.forEach(n=>{ const s=document.createElement('span'); s.className='pill'; s.textContent=n; container.appendChild(s); });
     }
-
     function populateGroupSwitcher(selectEl, groups, current){
       selectEl.innerHTML='';
-      groups.forEach(id=>{
-        const opt=document.createElement('option');
-        opt.value=id; opt.textContent=id;
-        if(id===current) opt.selected=true;
-        selectEl.appendChild(opt);
-      });
+      groups.forEach(id=>{ const opt=document.createElement('option'); opt.value=id; opt.textContent=id; if(id===current) opt.selected=true; selectEl.appendChild(opt); });
     }
-
     async function loadAllGroups(){
       const qs = await db.collection('Schulen').get();
       return qs.docs.map(d=>d.id).sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
     }
+    function setupToggle(btnId, bodyId){
+      const btn  = document.getElementById(btnId);
+      const body = document.getElementById(bodyId);
+      if(!btn || !body) return;
+      btn.addEventListener('click', ()=>{
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!expanded));
+        btn.title = expanded ? 'Aufklappen' : 'Zuklappen';
+        if(expanded){ body.setAttribute('hidden',''); } else { body.removeAttribute('hidden'); }
+      });
+    }
 
+    /* ===== Flexible Doc Getter ===== */
+    async function getDocFlexible(col,key){
+      const tries=[key, key?.toUpperCase(), key?.charAt(0)?.toUpperCase()+key?.slice(1)?.toLowerCase(), key?.toLowerCase()].filter(Boolean);
+      for(const id of tries){
+        try{ const snap=await db.collection(col).doc(id).get(); if(snap.exists) return {snap,id}; }catch(e){}
+      }
+      return null;
+    }
+
+    /* ===== LINKS: Standard-Template + Ensure ===== */
+    const LINKS_TEMPLATE_KEYS = [
+      'adminkalender','anleitungen','ausbilderunterlagen','bilder','checkliste',
+      'drive','onenote','schuluebersicht','spiele','trainingsausrüstung',
+      'trainingskalender','videos','vorlagen'
+    ];
+    function buildLinksTemplate(){ const t={}; LINKS_TEMPLATE_KEYS.forEach(k=>t[k]=''); return t; }
+    async function ensureLinksDocWithTemplate(schoolKey){
+      const key = (schoolKey || 'MASTER');
+      const res = await getDocFlexible('links', key);
+      const template = buildLinksTemplate();
+      if(!res){
+        await db.collection('links').doc(key).set(template, { merge:true });
+        return key;
+      } else {
+        const data = res.snap.data() || {};
+        const patch = {};
+        LINKS_TEMPLATE_KEYS.forEach(k=>{ if(!Object.prototype.hasOwnProperty.call(data,k)) patch[k]=''; });
+        if(Object.keys(patch).length){ await db.collection('links').doc(res.id).set(patch, { merge:true }); }
+        return res.id;
+      }
+    }
+
+    /* ===== LINKS: Edit/Save ===== */
+    function prettifyKey(k){ return String(k).replace(/[_\-]+/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2').replace(/\b\w/g,c=>c.toUpperCase()); }
+    let linksOriginalData = {}, linksDirtyPatch = {}, linksSelectedSchool = '', previousLinksSchool = '';
+    const linksIgnoredKeys = new Set(['__name__']);
+    function setDirty(key, value, inputEl){
+      const original = (linksOriginalData && Object.prototype.hasOwnProperty.call(linksOriginalData,key)) ? String(linksOriginalData[key]) : '';
+      const now = String(value);
+      if(original === now){ delete linksDirtyPatch[key]; inputEl.classList.remove('field-dirty'); }
+      else { linksDirtyPatch[key] = now; inputEl.classList.add('field-dirty'); }
+      updateDirtyBadge();
+    }
+    function clearDirty(){ linksDirtyPatch={}; updateDirtyBadge(); document.querySelectorAll('#linksList input[type="text"]').forEach(inp=>inp.classList.remove('field-dirty')); }
+    function updateDirtyBadge(){ const n=Object.keys(linksDirtyPatch).length; const bar=document.getElementById('linksSaveBar'); const badge=document.getElementById('linksDirtyBadge'); badge.textContent=n+(n===1?' Änderung':' Änderungen'); bar.style.display = n?'flex':'none'; }
+    function renderLinks(data){
+      const list=document.getElementById('linksList'), empty=document.getElementById('linksEmptyHint');
+      list.innerHTML=''; linksOriginalData=data||{}; clearDirty();
+      const allKeys = Array.from(new Set([...Object.keys(linksOriginalData), ...LINKS_TEMPLATE_KEYS]))
+                      .filter(k=>!linksIgnoredKeys.has(k))
+                      .sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
+      if(allKeys.length===0){ empty.style.display='block'; return; }
+      empty.style.display='none';
+      allKeys.forEach((key)=>{
+        const val = (typeof linksOriginalData[key]==='undefined') ? '' : linksOriginalData[key];
+        const row=document.createElement('div'); row.className='links-grid';
+        const nameEl=document.createElement('div'); nameEl.className='field-name'; nameEl.textContent=prettifyKey(key);
+        const valueWrap=document.createElement('div'); valueWrap.className='field-value';
+        if(typeof val==='string'){ const inp=document.createElement('input'); inp.type='text'; inp.value=val; inp.style.width='100%'; inp.dataset.key=key; inp.addEventListener('input',()=>setDirty(key,inp.value,inp)); valueWrap.appendChild(inp); }
+        else { const ta=document.createElement('textarea'); ta.readOnly=true; ta.rows=2; ta.value=JSON.stringify(val,null,2); valueWrap.appendChild(ta); const note=document.createElement('p'); note.className='hint'; note.textContent='Nicht-String Feld (schreibgeschützt).'; valueWrap.appendChild(note); }
+        row.appendChild(nameEl); row.appendChild(valueWrap); list.appendChild(row);
+      });
+    }
+    async function loadLinksForSchool(schoolKey){
+      linksSelectedSchool=schoolKey;
+      const list=document.getElementById('linksList'), empty=document.getElementById('linksEmptyHint');
+      list.innerHTML='<p class="hint">Lade Links…</p>'; empty.style.display='none'; clearDirty();
+      const ensuredId = await ensureLinksDocWithTemplate(schoolKey || 'MASTER');
+      const snap = await db.collection('links').doc(ensuredId).get();
+      renderLinks(snap.exists ? (snap.data()||{}) : buildLinksTemplate());
+      previousLinksSchool = schoolKey;
+    }
+    async function saveLinksChanges(){
+      const count=Object.keys(linksDirtyPatch).length; if(!count) return;
+      const school=linksSelectedSchool||'MASTER';
+      const res=await getDocFlexible('links',school);
+      const targetId=res?res.id:school;
+      const patch={}; let willDelete=[];
+      for(const [k,v] of Object.entries(linksDirtyPatch)){ if(String(v)===''){ willDelete.push(k);} else { patch[k]=String(v);} }
+      if(willDelete.length){
+        const ok = confirm('Leere Felder erkannt: '+willDelete.join(', ')+'.\nDiese Felder wirklich aus Firestore LÖSCHEN?');
+        if(ok){ willDelete.forEach(k=>{ patch[k]=firebase.firestore.FieldValue.delete(); }); }
+        else { willDelete.forEach(k=>{ delete patch[k]; }); }
+      }
+      if(Object.keys(patch).length===0){ clearDirty(); return; }
+      await db.collection('links').doc(targetId).set(patch,{merge:true});
+      await loadLinksForSchool(linksSelectedSchool);
+    }
+    function resetLinksChanges(){
+      document.querySelectorAll('#linksList input[type="text"]').forEach(inp=>{
+        const key=inp.dataset.key; inp.value=(linksOriginalData && typeof linksOriginalData[key]==='string')?linksOriginalData[key]:'';
+        inp.classList.remove('field-dirty');
+      });
+      clearDirty();
+    }
+
+    /* ===== Dropdown-Befüller für Links & Trainer ===== */
+    function populateLinksSchoolSelect(schools, preferred){
+      const sel=document.getElementById('linksSchoolSelect');
+      sel.innerHTML='';
+      if(!schools || !schools.length){
+        const o=document.createElement('option'); o.value=''; o.textContent='(keine Schulen in dieser Gruppe)'; sel.appendChild(o); sel.disabled=true;
+        document.getElementById('linksList').innerHTML=''; document.getElementById('linksEmptyHint').style.display='block'; return;
+      }
+      sel.disabled=false;
+      const uniq=[...new Set(schools.map(s=>String(s).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
+      uniq.forEach(name=>{ const o=document.createElement('option'); o.value=name; o.textContent=name; sel.appendChild(o); });
+      let pick = preferred && uniq.includes(preferred) ? preferred : (sessionStorage.getItem('linksSchool') || uniq[0]);
+      const pickNorm = uniq.find(u=>u.toLowerCase()===(pick||'').toLowerCase()) || uniq[0];
+      sel.value=pickNorm; sessionStorage.setItem('linksSchool', pickNorm.toLowerCase());
+      sel.onchange = async ()=>{
+        if(Object.keys(linksDirtyPatch).length){
+          const ok=confirm('Es gibt ungespeicherte Änderungen. Verwerfen und Schule wechseln?');
+          if(!ok){ sel.value = previousLinksSchool || pickNorm; return; }
+        }
+        sessionStorage.setItem('linksSchool', sel.value.toLowerCase());
+        await loadLinksForSchool(sel.value);
+      };
+      loadLinksForSchool(pickNorm);
+    }
+    function populateTrainerSchoolSelect(schools, preferred){
+      const sel=document.getElementById('trainerSchoolSelect');
+      sel.innerHTML='';
+      const btn=document.getElementById('confirmTrainerSwitch');
+      if(!schools || !schools.length){
+        const o=document.createElement('option'); o.value=''; o.textContent='(keine Schulen in dieser Gruppe)'; sel.appendChild(o); sel.disabled=true; if(btn) btn.disabled=true; return;
+      }
+      sel.disabled=false; if(btn) btn.disabled=false;
+      const uniq=[...new Set(schools.map(s=>String(s).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
+      uniq.forEach(name=>{ const o=document.createElement('option'); o.value=name; o.textContent=name; sel.appendChild(o); });
+      const pick = preferred && uniq.includes(preferred) ? preferred : uniq[0];
+      sel.value = uniq.find(u=>u.toLowerCase()===(pick||'').toLowerCase()) || uniq[0];
+    }
+
+    /* ===== Sichtbarkeit nur bei Gruppen-Zugehörigkeit ===== */
+    async function isGroupContext(baseSchool){
+      if(!baseSchool) return false;
+      if(String(baseSchool).toUpperCase()==='MASTER') return true;
+      const found = await getDocFlexible('Schulen', baseSchool);
+      return !!found;
+    }
+
+    /* ===== Sekundäre App für „UID abrufen“ ===== */
+    function getSecondaryAuth(){
+      // Re-use, falls bereits existiert
+      const existing = firebase.apps.find(a => a.name === 'uidHelper');
+      const app = existing || firebase.initializeApp(window.firebaseConfig, 'uidHelper');
+      const a = app.auth();
+      // Keine Session persistieren
+      try { a.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch(e){}
+      return a;
+    }
+    async function fetchUidByEmailPassword(email, password){
+      const em = String(email||'').trim(), pw = String(password||'');
+      if(!em || !pw) throw new Error('E-Mail und Passwort erforderlich.');
+      const secAuth = getSecondaryAuth();
+      // Login in sekundärer App
+      const cred = await secAuth.signInWithEmailAndPassword(em, pw);
+      const uid = cred.user && cred.user.uid;
+      // sofort wieder abmelden
+      await secAuth.signOut().catch(()=>{});
+      return uid || '';
+    }
+
+    /* ===== Auth / Init ===== */
     auth.onAuthStateChanged(async user=>{
       if(!user){ location.href='index.html'; return; }
 
-      // Rolle/Gruppe laden
       const roleDoc = await db.collection('rollen').doc(user.uid).get();
       if(!roleDoc.exists){ alert('Keine Rolle gefunden.'); location.href='hauptseite.html'; return; }
       const roleData = roleDoc.data()||{};
       const role = String(roleData.role||'').toLowerCase();
-      const baseGroupKeyExact = sclean(roleData.school || 'MASTER'); // ✨ exakt aus Rolle, keine Uppercase-Umwandlung!
+      const baseGroupKeyExact = sclean(roleData.school || 'MASTER');
 
-      // Nur Admin/Si-Fu reinlassen
       if(!['admin','si-fu'].includes(role)){
         document.getElementById('guardMsg').style.display='block';
         setTimeout(()=>location.href='hauptseite.html',800);
         return;
       }
 
+      const allowed = await isGroupContext(baseGroupKeyExact);
+      if(!allowed){
+        document.getElementById('groupGuardMsg').style.display='block';
+        ['schoolAdmin','groupAdmin','linksAdmin','trainerSwitch'].forEach(id=>{
+          const el=document.getElementById(id); if(el) el.style.display='none';
+        });
+        return;
+      }
+
+      // Karten sichtbar
       document.getElementById('schoolAdmin').style.display='block';
+      document.getElementById('linksAdmin').style.display='block';
+      document.getElementById('trainerSwitch').style.display='block';
+      setupToggle('toggleSchool','schoolAdminBody');
+      setupToggle('toggleLinks','linksAdminBody');
+      setupToggle('toggleTrainerSwitch','trainerSwitchBody');
+      setupToggle('toggleUidFetcher','uidFetcherBody');
 
-      // Verwaltungs-Gruppe: MASTER darf wählen, sonst feste eigene Gruppe (exakt)
+      const isMaster = (baseGroupKeyExact.toUpperCase()==='MASTER');
+      const groupAdmin = document.getElementById('groupAdmin');
+      if(isMaster){
+        groupAdmin.style.display='block';
+        setupToggle('toggleGroup','groupAdminBody');
+      } else {
+        groupAdmin.style.display='none';
+      }
+
       let manageGroup = sessionStorage.getItem('manageGroupId') || baseGroupKeyExact;
-
       const switchRow = document.getElementById('groupSwitchRow');
       const switchEl  = document.getElementById('groupSwitch');
       const reloadBtn = document.getElementById('reloadGroupsBtn');
 
+      document.getElementById('linksSaveBtn').onclick = saveLinksChanges;
+      document.getElementById('linksResetBtn').onclick = resetLinksChanges;
+      document.getElementById('reloadLinksSchools').onclick = async ()=>{ await refreshSchools(); };
+      document.getElementById('reloadTrainerSchools').onclick = async ()=>{ await refreshSchools(); };
+
       async function refreshSchools(){
         document.getElementById('groupLabel').textContent = manageGroup;
         const { id:resolvedId, schools } = await loadGroupSchools(manageGroup);
-        // Wir behalten manageGroup als „logischen“ Schlüssel (aus Rolle),
-        // schreiben aber mit der tatsächlich gefundenen Doc-ID (resolvedId)
         sessionStorage.setItem('resolvedManageGroupId', resolvedId);
         renderChips(document.getElementById('schoolsList'), schools);
+
+        const preferred = (sessionStorage.getItem('linksSchool')
+                          || sessionStorage.getItem('activeSchool')
+                          || (schools && schools[0]) || '').toString();
+        populateLinksSchoolSelect(schools, preferred);
+        populateTrainerSchoolSelect(schools, preferred);
       }
 
-      if(baseGroupKeyExact.toUpperCase() === 'MASTER'){
+      if(isMaster){
         switchRow.style.display='flex';
         const fill = async ()=>{
           const groups = await loadAllGroups();
           if(groups.length && !groups.includes(manageGroup)){
-            // versuche eine case-insensitive Zuordnung
             const found = groups.find(g=>g.toLowerCase()===manageGroup.toLowerCase());
             manageGroup = found || groups[0];
           }
@@ -225,6 +533,10 @@
         };
         reloadBtn.onclick = fill;
         switchEl.onchange = async ()=>{
+          if(Object.keys(linksDirtyPatch).length){
+            const ok = confirm('Es gibt ungespeicherte Änderungen in „Links“. Verwerfen beim Gruppenwechsel?');
+            if(!ok){ switchEl.value = manageGroup; return; }
+          }
           manageGroup = switchEl.value;
           sessionStorage.setItem('manageGroupId', manageGroup);
           await refreshSchools();
@@ -235,13 +547,12 @@
         await refreshSchools();
       }
 
-      // Schule hinzufügen
+      // Schule zur Gruppe hinzufügen
       document.getElementById('addSchoolBtn').onclick = async ()=>{
         const inp = document.getElementById('newSchoolInput');
         const name = sclean(inp.value);
         if(!name){ alert('Bitte einen Schulnamen eingeben.'); return; }
         try{
-          // mit der tatsächlich existierenden Doc-ID schreiben
           const targetId = sessionStorage.getItem('resolvedManageGroupId') || manageGroup;
           await addSchoolToGroup(targetId, name);
           await refreshSchools();
@@ -252,10 +563,8 @@
         }
       };
 
-      // Gruppenverwaltung nur für MASTER
-      const groupAdmin = document.getElementById('groupAdmin');
-      if(baseGroupKeyExact.toUpperCase() === 'MASTER'){
-        groupAdmin.style.display='block';
+      // MASTER: Gruppe anlegen
+      if(isMaster){
         document.getElementById('addGroupBtn').onclick = async ()=>{
           const inp = document.getElementById('newGroupInput');
           const gname = sclean(inp.value);
@@ -274,9 +583,49 @@
             alert('Fehler beim Anlegen der Gruppe: ' + (e?.message || e));
           }
         };
-      } else {
-        groupAdmin.style.display='none';
       }
+
+      // Trainer-Schulwechsel (UID -> rollen/<UID>.school)
+      document.getElementById('confirmTrainerSwitch').onclick = async ()=>{
+        const uid = sclean(document.getElementById('trainerUidInput').value);
+        const newSchool = sclean(document.getElementById('trainerSchoolSelect').value);
+        if(!uid){ alert('Bitte eine UID eingeben.'); return; }
+        if(!newSchool){ alert('Bitte eine Schule wählen.'); return; }
+        try{
+          await db.collection('rollen').doc(uid).set({ school: newSchool }, { merge:true });
+          alert('Schule aktualisiert für UID: ' + uid);
+        }catch(e){
+          console.error(e);
+          alert('Schulwechsel fehlgeschlagen: ' + (e?.message || e));
+        }
+      };
+
+      // UID abrufen (sekundäre App)
+      document.getElementById('fetchUidBtn').onclick = async ()=>{
+        const email = sclean(document.getElementById('uidEmail').value);
+        const pw = sclean(document.getElementById('uidPassword').value);
+        const out = document.getElementById('uidResult');
+        try{
+          out.value = '…';
+          const uid = await fetchUidByEmailPassword(email, pw);
+          out.value = uid || '(keine UID)';
+          if(uid){
+            // kleine Quality-of-Life: gleich oben eintragen
+            const uidInput = document.getElementById('trainerUidInput');
+            if(uidInput && !uidInput.value) uidInput.value = uid;
+          }
+        }catch(e){
+          console.error(e);
+          out.value = '';
+          alert('UID konnte nicht abgerufen werden: ' + (e?.message || e));
+        }
+      };
+      document.getElementById('copyUidBtn').onclick = async ()=>{
+        const out = document.getElementById('uidResult');
+        if(!out.value){ alert('Keine UID vorhanden.'); return; }
+        try{ await navigator.clipboard.writeText(out.value); alert('UID kopiert.'); }
+        catch{ alert('Konnte UID nicht kopieren.'); }
+      };
     });
   </script>
 </body>
