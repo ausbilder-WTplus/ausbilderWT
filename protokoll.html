@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WT-Ausbilder – Protokoll</title>
+  <style>
+    :root { --bg:#000; --text:#fff; --accent-bg:#fff; --accent-text:#000; --card:#111; --border:#333; --muted:#aaa; --hover:#1a1a1a; --red:#f44; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+    header{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)}
+    header img{height:60px;object-fit:contain;transition:opacity .3s ease;}
+    .content{max-width:1100px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+    .btn{background:var(--accent-bg);color:var(--accent-text);border:none;padding:10px 16px;border-radius:10px;font-weight:bold;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3);}
+    .btn.ghost{background:transparent;color:#fff;border:1px solid var(--border);box-shadow:none;}
+    .btn.small{font-size:13px;padding:8px 12px;border-radius:8px}
+    .pill{background:#0b0b0b;color:#fff;border:1px solid var(--border);border-radius:999px;padding:8px 12px;font-size:14px;}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row > *{flex:1 1 260px}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
+    input, textarea, select{width:100%;background:#000;color:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+    textarea{min-height:120px;resize:vertical}
+    .list{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+    .list .item{display:flex;align-items:center;gap:8px}
+    .status{display:block;text-align:center;margin-top:8px;font-size:14px;color:var(--muted)}
+    .status.ok{color:#9be79b} .status.err{color:#ff9c9c}
+    .topic-card{background:#0b0b0b;border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+    .topic-header{display:flex;gap:8px;align-items:center}
+    .topic-header input{flex:1}
+    .topic-notes{min-height:80px}
+    .home-btn{position:fixed; left:18px; bottom:18px; border:none; background:#fff; color:#000; border-radius:50%; padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35); z-index:1000;}
+    .home-btn img{ width:32px; height:32px; display:block; }
+
+    /* Dichte Checkbox-Labels */
+    .inline-check{display:inline-flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1}
+    .inline-check input[type="checkbox"]{width:auto;height:auto;margin:0;transform:none}
+
+    /* Zentrierung für den Speichern-Bereich */
+    .center-actions{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+
+    /* Druck-Styles */
+    @media print {
+      body { background:#fff; color:#000; }
+      header, .home-btn, .btn, .status, #toggleAnonNames { display:none !important; }
+      .card { background:#fff; border:1px solid #ddd; }
+      input, textarea, select { background:#fff; color:#000; border:1px solid #ccc; }
+      .pill { border-color:#ddd; color:#000; background:#fff; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <img id="logo-left" src="logos/master/logo-left.jpg" alt="Logo links">
+  <img id="logo-center" src="logos/master/logo-center.jpg" alt="Logo Mitte">
+  <img id="logo-right" src="logos/master/logo-right.jpg" alt="Logo rechts">
+</header>
+
+<div class="content" id="app" style="display:none">
+  <!-- Kopf: Terminwahl -->
+  <div class="card">
+    <div class="row" style="align-items:center">
+      <div>
+        <label>Trainingstermin</label>
+        <select id="sessionDateSelect"><option value="">(Lade Termine…)</option></select>
+      </div>
+      <div>
+        <label>Trainingsthema</label>
+        <input id="topicFromDb" disabled placeholder="Wird geladen…" />
+      </div>
+      <div style="flex:0 0 auto; display:flex; gap:8px; align-items:center">
+        <button class="btn small" id="reloadSessionsBtn">🔄 Termine neu laden</button>
+      </div>
+    </div>
+
+    <!-- Manuelle Wahl direkt unter Trainingstermin (enge Checkbox) -->
+    <div class="row" style="align-items:center; margin-top:10px">
+      <label class="inline-check">
+        <input type="checkbox" id="manualSessionToggle" />
+        <span>Training manuell wählen</span>
+      </label>
+      <div id="manualDateWrap" style="display:none">
+        <label>Manuelles Datum</label>
+        <input type="date" id="manualDateInput" />
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <span id="activeRolePill" class="pill" style="display:none"></span>
+      <span id="activeSchoolPill" class="pill" style="display:none"></span>
+    </div>
+  </div>
+
+  <!-- Live Anwesenheit -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3>👥 Live-Anwesenheit</h3>
+      <div class="row" style="flex:0 0 auto">
+        <button class="btn small" id="toggleAnonNames">🙈 Namen ausblenden</button>
+        <span class="pill" id="attCountPill">0</span>
+      </div>
+    </div>
+    <div id="attendanceList" class="list" aria-live="polite"></div>
+  </div>
+
+  <!-- Themen + Notizen (mit Verantwortlichem) -->
+  <div class="card">
+    <div class="row" style="align-items:flex-end">
+      <div style="flex:2">
+        <label>Neues Thema hinzufügen</label>
+        <input id="topicInput" placeholder="z.B. Lat Sao – Timing / Drills" />
+      </div>
+      <div style="flex:0 0 auto">
+        <button class="btn" id="addTopicBtn">➕ Thema anlegen</button>
+      </div>
+    </div>
+    <div id="topicsWrap" style="display:grid;gap:12px;margin-top:12px"></div>
+  </div>
+
+  <!-- To-Dos -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px;flex-wrap:wrap">
+      <h3>📌 To-Dos fürs nächste Ausbildertraining</h3>
+      <label class="inline-check" style="font-size:13px;color:var(--muted)">
+        <input type="checkbox" id="autoSeedNext" checked />
+        <span>To-Dos als Themen fürs nächste Protokoll</span>
+      </label>
+    </div>
+    <div class="row">
+      <input id="todoInput" placeholder="To-Do (Aufgabe)" />
+      <input id="todoOwnerInput" placeholder="Verantwortlich (Name)" />
+      <button class="btn" id="addTodoBtn">➕ hinzufügen</button>
+    </div>
+
+    <div class="row" style="flex:1 1 100%; margin-top:12px">
+      <div>
+        <label for="nextSessionSelect">Nächstes Ausbildertraining auswählen</label>
+        <select id="nextSessionSelect" disabled>
+          <option value="">(Bitte Termin wählen)</option>
+        </select>
+      </div>
+      <div style="flex:0 0 auto">
+        <label>&nbsp;</label>
+        <button class="btn small" id="reloadNextSessionsBtn">🔄 Termine laden</button>
+      </div>
+    </div>
+
+    <div id="todoList" class="list" style="margin-top:12px"></div>
+  </div>
+
+  <!-- Speichern – zentriert, ohne Überschrift -->
+  <div class="card">
+    <div class="center-actions">
+      <button class="btn" id="saveBtn">📤 Speichern</button>
+      <span class="status" id="status">Bereit.</span>
+    </div>
+  </div>
+
+  <!-- Drucken (am Ende der Seite) -->
+  <div class="card">
+    <button class="btn" id="printBtn">🖨️ Drucken</button>
+  </div>
+</div>
+
+<!-- Home-Button -->
+<button class="home-btn" onclick="location.href='hauptseite.html'">
+  <img src="home.jpg" alt="Home">
+</button>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+const auth=firebase.auth(), db=firebase.firestore();
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+function preloadAndSet(img, url){const t=new Image();t.onload=()=>img.src=url; t.src=url;}
+async function applyHeaderBySchool(school){
+  const base=(school&&school.toLowerCase()!=='master')?`logos/${school.toLowerCase()}`:'logos/master';
+  preloadAndSet(document.getElementById('logo-left'),`${base}/logo-left.jpg`);
+  preloadAndSet(document.getElementById('logo-center'),`${base}/logo-center.jpg`);
+  preloadAndSet(document.getElementById('logo-right'),`${base}/logo-right.jpg`);
+}
+const normalize=r=>{r=(r||'').toLowerCase();
+  if(['administrator','admins','adminstrator'].includes(r))r='admin';
+  if(['trainer/in','trainerin','coach'].includes(r))r='trainer';
+  if(['si-fu','sifu','si fu','si‐fu','si‒fu'].includes(r))r='si-fu';
+  return r;
+};
+
+const state={school:null, role:null, topicDb:'—', att:[], hideNames:false, topics:[], todos:[], currentSessionId:null};
+function ymd(d){const z=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`}
+function todayLocal(){const d=new Date(); d.setHours(0,0,0,0); return d;}
+function updateStatus(msg,type){const el=document.getElementById('status'); el.textContent=msg; el.classList.remove('ok','err'); if(type) el.classList.add(type);}
+function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
+function endOfDay(d){const x=new Date(d);x.setHours(23,59,59,999);return x}
+
+// neue Struktur: protocols/{school}/dates/{dateKey}
+function protocolDocRef(schoolLower, dateKey){
+  return db.collection('protocols').doc(schoolLower).collection('dates').doc(dateKey);
+}
+
+auth.onAuthStateChanged(async user=>{
+  if(!user){location.replace('index.html');return;}
+  document.getElementById('app').style.display='block';
+
+  let role=normalize(sessionStorage.getItem('role')),
+      school=(sessionStorage.getItem('school')||'').trim();
+  if(!role||!school){
+    try{const p=await db.collection('rollen').doc(user.uid).get();
+      if(p.exists){const d=p.data(); role=normalize(d.role); school=(d.school||'').trim();
+        sessionStorage.setItem('role',role); sessionStorage.setItem('school',school);
+      }}catch{}
+  }
+  const active=(sessionStorage.getItem('activeSchool')||school||'MASTER').trim().toUpperCase();
+  state.role=role; state.school=active;
+
+  document.getElementById('activeRolePill').textContent='Rolle: '+(role||'–');
+  document.getElementById('activeRolePill').style.display='inline-block';
+  document.getElementById('activeSchoolPill').textContent='Schule: '+state.school;
+  document.getElementById('activeSchoolPill').style.display='inline-block';
+
+  const isAdminLike = ['admin','si-fu'].includes((state.role||'').toLowerCase());
+  if(!isAdminLike){ document.getElementById('saveBtn').style.display='none'; }
+
+  await applyHeaderBySchool(state.school);
+
+  if(!['admin','si-fu','trainer'].includes(role)){
+    document.querySelector('.content').innerHTML =
+      '<div class="card"><h3>Zugriff verweigert</h3><p class="danger">Nur Trainer, Si-Fu und Admins.</p></div>';
+    return;
+  }
+
+  initPage().catch(e=>{console.error(e); updateStatus('Fehler beim Initialisieren','err');});
+});
+
+/* Sessions laden / Auswahl steuern */
+async function loadAllSessionsForSchool(){
+  const sel=document.getElementById('sessionDateSelect');
+  sel.innerHTML='<option value="">(Lade Termine…)</option>';
+  try{
+    let snap=null;
+    try{
+      snap = await db.collection('sessions')
+        .where('school','==',state.school)
+        .orderBy('date','asc')
+        .limit(400)
+        .get();
+    }catch(e){
+      const s2 = await db.collection('sessions').where('school','==',state.school).get();
+      const rows=[]; s2.forEach(doc=>{ const d=doc.data(); const dt=d.date?.toDate?.(); if(!dt) return; rows.push({id:doc.id, data:d, dt}); });
+      rows.sort((a,b)=>a.dt-b.dt);
+      snap = { docs: rows.map(r=>({ id:r.id, data:()=>r.data })) };
+    }
+
+    const byDay=new Map();
+    snap.docs.forEach(doc=>{
+      const data=doc.data(); const dt=data.date?.toDate?.(); if(!dt) return;
+      const key=ymd(dt);
+      if(!byDay.has(key)){
+        byDay.set(key, { sessionId: doc.id, date: dt, topic: data.topic||'' });
+      }
+    });
+
+    const items=[...byDay.entries()].map(([key,val])=>({key, ...val})).sort((a,b)=>a.date - b.date);
+    sel.innerHTML='';
+    if(items.length===0){
+      sel.innerHTML='<option value="">(Keine Termine gefunden)</option>';
+      sel.disabled=true; return;
+    }
+    const now=todayLocal().getTime();
+    let defaultIdx=items.findIndex(x=>ymd(x.date)===ymd(new Date()));
+    if(defaultIdx===-1){
+      defaultIdx=items.findIndex(x=>x.date.getTime()>=now);
+      if(defaultIdx===-1) defaultIdx=items.length-1;
+    }
+
+    items.forEach((it,idx)=>{
+      const op=document.createElement('option');
+      op.value=it.key;
+      op.textContent = `${it.date.toLocaleString()}${it.topic?' — '+it.topic:''}`;
+      op.dataset.sessionId = it.sessionId;
+      sel.appendChild(op);
+      if(idx===defaultIdx) sel.selectedIndex=idx;
+    });
+
+    await applySelectedSessionFromPicker();
+    await loadUpcomingSessionsForSeeding(getSelectedDate());
+  }catch(e){
+    console.error('[loadAllSessionsForSchool]', e);
+    sel.innerHTML='<option value="">(Fehler beim Laden)</option>';
+    sel.disabled=true;
+  }
+}
+
+function getSelectedDate(){
+  const manual=document.getElementById('manualSessionToggle').checked;
+  if(manual){
+    const v=document.getElementById('manualDateInput').value;
+    const d=v? new Date(v) : todayLocal();
+    d.setHours(0,0,0,0); return d;
+  } else {
+    const sel=document.getElementById('sessionDateSelect');
+    const v=sel.value; if(!v){ return todayLocal(); }
+    const [y,m,da]=v.split('-').map(n=>parseInt(n,10));
+    return new Date(y, m-1, da, 0,0,0,0);
+  }
+}
+function getSelectedDateKey(){ return ymd(getSelectedDate()); }
+
+async function applySelectedSessionFromPicker(){
+  const manual=document.getElementById('manualSessionToggle').checked;
+  if(manual){
+    state.currentSessionId=null;
+    state.topicDb='—';
+    document.getElementById('topicFromDb').value='—';
+    startAttendanceListener();
+    await loadExistingProtocol();
+    return;
+  }
+  document.getElementById('topicFromDb').value='Lade…';
+  state.currentSessionId=null; state.topicDb='—';
+  const hit=await findSessionForDate(getSelectedDate(), state.school);
+  if(hit){ state.currentSessionId=hit.id; state.topicDb=hit.data.topic||'—'; }
+  document.getElementById('topicFromDb').value=state.topicDb||'—';
+  startAttendanceListener();
+  await loadExistingProtocol();
+}
+
+async function findSessionForDate(date, school){
+  const start=startOfDay(date), end=endOfDay(date);
+  try{
+    const s=await db.collection('sessions')
+      .where('school','==',school)
+      .where('date','>=',firebase.firestore.Timestamp.fromDate(start))
+      .where('date','<=',firebase.firestore.Timestamp.fromDate(end))
+      .orderBy('date','asc')
+      .limit(3)
+      .get();
+    if(!s.empty){const doc=s.docs[0]; return {id:doc.id, data:doc.data()};}
+  }catch(e){ }
+  try{
+    const s2=await db.collection('sessions').where('school','==',school).limit(200).get();
+    let best=null; s2.forEach(doc=>{const d=doc.data(); const dt=d.date?.toDate?.(); if(!dt) return; if(ymd(dt)===ymd(date)) best={id:doc.id, data:d};});
+    if(best) return best;
+  }catch(e){ }
+  return null;
+}
+
+/* Live-Anwesenheit */
+let unsubAtt=null;
+function dedupeBy(arr,keyFn){const seen=new Set(); const out=[]; for(const x of arr){const k=keyFn(x); if(seen.has(k)) continue; seen.add(k); out.push(x);} return out;}
+function renderAttendance(){
+  const wrap=document.getElementById('attendanceList'); wrap.innerHTML='';
+  const list=state.att||[]; document.getElementById('attCountPill').textContent=list.length;
+  if(list.length===0){ wrap.innerHTML='<span class="status">Keine Check-Ins.</span>'; return; }
+  list.forEach(p=>{
+    const left=document.createElement('div'); left.className='item';
+    left.appendChild(document.createTextNode('• '));
+    const name=document.createElement('span'); name.textContent= state.hideNames ? 'Teilnehmer' : (p.name||'Unbekannt');
+    left.appendChild(name);
+    const right=document.createElement('div'); right.innerHTML='';
+    wrap.appendChild(left); wrap.appendChild(right);
+  });
+}
+function startAttendanceListener(){
+  if(typeof unsubAtt==='function'){ try{unsubAtt();}catch{} }
+  state.att=[];
+  if(!state.currentSessionId){ renderAttendance(); return; }
+  try{
+    unsubAtt=db.collection('sessions').doc(state.currentSessionId).collection('checkins')
+      .orderBy('checkedAt','desc')
+      .onSnapshot(s=>{
+        const list=[]; s.forEach(doc=>{const d=doc.data()||{}; list.push({name:d.displayName||d.name||'Unbekannt', uid:d.uid||doc.id});});
+        state.att=dedupeBy(list,p=>p.uid||p.name); renderAttendance();
+      });
+  }catch(e){ renderAttendance(); }
+}
+
+/* Themen/Notizen (mit Verantwortlichem) */
+function createTopicCard(t, idx){
+  const card=document.createElement('div'); 
+  card.className='topic-card'; 
+  card.dataset.idx=idx;
+  card.innerHTML=`
+    <div class="topic-header">
+      <input class="topic-title" placeholder="Thema" value="${(t.title||'').replaceAll('"','&quot;')}">
+      <input class="topic-owner" placeholder="Verantwortlich" style="max-width:220px" value="${(t.owner||'').replaceAll('"','&quot;')}">
+      <button class="btn small ghost rm">🗑️</button>
+    </div>
+    <textarea class="topic-notes" placeholder="Notizen…">${(t.notes||'')}</textarea>
+  `;
+  const titleInput = card.querySelector('.topic-title');
+  const ownerInput = card.querySelector('.topic-owner');
+  const notesTa    = card.querySelector('.topic-notes');
+
+  titleInput.oninput = (e)=>{ state.topics[idx].title = e.target.value; };
+  ownerInput.oninput = (e)=>{ state.topics[idx].owner = e.target.value; };
+  notesTa.oninput    = (e)=>{ state.topics[idx].notes = e.target.value; };
+
+  card.querySelector('.rm').onclick=()=>{
+    state.topics.splice(idx,1);
+    renderTopicsFromState();
+  };
+  return card;
+}
+function renderTopicsFromState(){
+  const wrap=document.getElementById('topicsWrap'); 
+  wrap.innerHTML='';
+  (state.topics||[]).forEach((t,i)=>{
+    wrap.appendChild(createTopicCard(t,i));
+  });
+}
+function addNewTopic(title='', owner=''){
+  state.topics.push({title, owner: owner||'', notes:''});
+  renderTopicsFromState();
+}
+
+/* To-Dos */
+function renderTodos(){
+  const wrap=document.getElementById('todoList'); wrap.innerHTML='';
+  if(!Array.isArray(state.todos) || state.todos.length===0){
+    wrap.innerHTML='<span class="status">Noch keine To-Dos.</span>'; return;
+  }
+  state.todos.forEach((t,idx)=>{
+    const rowL=document.createElement('div'); rowL.className='item';
+    rowL.innerHTML=`<span>•</span>
+      <input class="todo-task" value="${(t.task||'').replaceAll('"','&quot;')}" />
+      <span class="status" style="font-size:12px">verantwortlich</span>
+      <input class="todo-owner" style="max-width:220px" value="${(t.owner||'').replaceAll('"','&quot;')}" />`;
+    const inputs=rowL.querySelectorAll('input');
+    const taskInput=inputs[0]; const ownerInput=inputs[1];
+    taskInput.addEventListener('input',e=>{ t.task=e.target.value; });
+    ownerInput.addEventListener('input',e=>{ t.owner=e.target.value; });
+    const rowR=document.createElement('div');
+    const del=document.createElement('button'); del.className='btn small ghost'; del.textContent='Löschen';
+    del.onclick=()=>{ state.todos.splice(idx,1); renderTodos(); };
+    rowR.appendChild(del);
+    wrap.appendChild(rowL); wrap.appendChild(rowR);
+  });
+}
+function addTodo(){
+  const task=document.getElementById('todoInput').value.trim();
+  const owner=document.getElementById('todoOwnerInput').value.trim();
+  if(!task) return;
+  state.todos.push({task,owner});
+  document.getElementById('todoInput').value='';
+  document.getElementById('todoOwnerInput').value='';
+  renderTodos();
+}
+
+/* Protokoll laden/speichern */
+async function loadExistingProtocol(){
+  const schoolLower = state.school.toLowerCase();
+  const dateKey = getSelectedDateKey();
+  try{
+    const snap=await protocolDocRef(schoolLower, dateKey).get();
+    if(snap.exists){
+      const d=snap.data();
+      state.topics=Array.isArray(d.topics)? JSON.parse(JSON.stringify(d.topics)) : [];
+      state.todos=Array.isArray(d.todos)? JSON.parse(JSON.stringify(d.todos)) : [];
+      renderTopicsFromState(); renderTodos(); updateStatus('Protokoll geladen.','ok');
+    } else {
+      state.topics=[]; state.todos=[]; renderTopicsFromState(); renderTodos();
+      updateStatus('Kein Protokoll vorhanden – neu anlegen.');
+    }
+  }catch(e){ updateStatus('Fehler beim Laden des Protokolls','err'); }
+}
+function normTitle(x){ return (x||'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+
+async function saveProtocol(){
+  updateStatus('Speichere…');
+  const schoolLower = state.school.toLowerCase();
+  const dateKey=getSelectedDateKey();
+
+  const payload={
+    school: schoolLower,
+    dateKey,
+    sessionId: state.currentSessionId||null,
+    topicFromDb: state.topicDb||null,
+    topics: state.topics,
+    todos: state.todos,
+    attendance: state.att,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  await protocolDocRef(schoolLower, dateKey).set(payload,{merge:true});
+
+  // To-Dos -> nächstes Protokoll (ohne Doppel-Themen) – nur wenn Checkbox aktiv
+  if(document.getElementById('autoSeedNext').checked){
+    const sel=document.getElementById('nextSessionSelect');
+    const nextKey=sel?.value||'';
+
+    if(!nextKey){
+      updateStatus('Bitte nächstes Training auswählen (To-Dos).','err'); return;
+    }
+    if(nextKey === dateKey){
+      updateStatus('„Nächstes Training“ darf nicht dem aktuellen Termin entsprechen. Bitte einen anderen Termin wählen.','err');
+      return;
+    }
+
+    const nextRef = protocolDocRef(schoolLower, nextKey);
+
+    let existingTopics=[];
+    try{
+      const nextSnap=await nextRef.get();
+      if(nextSnap.exists && Array.isArray(nextSnap.data().topics)){
+        existingTopics = nextSnap.data().topics;
+      }
+    }catch(e){}
+
+    const existSet = new Set(existingTopics.map(t=>normTitle(t?.title)));
+    const seed = [];
+    (state.todos||[]).forEach(t=>{
+      const title = (t.task||'').toString();
+      const key = normTitle(title);
+      if(!title) return;
+      if(existSet.has(key)) return;
+      existSet.add(key);
+      seed.push({ title, notes:'', owner: t.owner||'' });
+    });
+
+    if(seed.length>0){
+      await nextRef.set({
+        school: schoolLower,
+        dateKey: nextKey,
+        seedFrom: dateKey,
+        topics: firebase.firestore.FieldValue.arrayUnion(...seed),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      },{merge:true});
+    }
+  }
+
+  updateStatus('Gespeichert.','ok');
+}
+
+/* Nächstes Training (Dropdown) */
+async function loadUpcomingSessionsForSeeding(fromDate){
+  const sel=document.getElementById('nextSessionSelect'); if(!sel) return;
+  sel.innerHTML='<option value=\"\">(Lade Termine…)</option>';
+  try{
+    const from=startOfDay(fromDate);
+    let res=null;
+    try{
+      res = await db.collection('sessions')
+        .where('school','==', state.school)
+        .where('date','>=', firebase.firestore.Timestamp.fromDate(from))
+        .orderBy('date','asc')
+        .limit(24)
+        .get();
+    }catch(e){
+      const s2=await db.collection('sessions').where('school','==', state.school).get();
+      const rows=[]; s2.forEach(doc=>{ const d=doc.data(); const dt=d.date?.toDate?.(); if(!dt) return; if(dt>=from) rows.push({id:doc.id, data:d, dt}); });
+      rows.sort((a,b)=>a.dt-b.dt);
+      res={ docs: rows.map(r=>({ id:r.id, data:()=>r.data })) };
+    }
+
+    const opts=[];
+    res.docs.forEach(doc=>{
+      const d=doc.data(); const dt=d.date?.toDate?.(); if(!dt) return;
+      const key=ymd(dt); const label=`${dt.toLocaleString()}${d.topic?' — '+d.topic:''}`;
+      opts.push({key,label});
+    });
+
+    sel.innerHTML='';
+    if(opts.length===0){ sel.innerHTML='<option value=\"\">(Keine Termine gefunden)</option>'; sel.disabled=true; }
+    else { sel.disabled=false; opts.forEach(o=>{ const op=document.createElement('option'); op.value=o.key; op.textContent=o.label; sel.appendChild(op); }); sel.selectedIndex=0; }
+
+    sel.disabled = !document.getElementById('autoSeedNext').checked || sel.options.length===0;
+  }catch(e){
+    sel.innerHTML='<option value=\"\">(Fehler beim Laden)</option>'; sel.disabled=true;
+  }
+}
+
+/* Init & Events */
+async function initPage(){
+  document.getElementById('toggleAnonNames').onclick=()=>{state.hideNames=!state.hideNames; renderAttendance();};
+  document.getElementById('addTopicBtn').onclick=()=>{ const v=document.getElementById('topicInput').value.trim(); if(!v) return; addNewTopic(v,''); document.getElementById('topicInput').value=''; };
+  document.getElementById('addTodoBtn').onclick=addTodo;
+  document.getElementById('todoInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('todoOwnerInput').focus(); }});
+  document.getElementById('todoOwnerInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addTodo(); }});
+  document.getElementById('saveBtn').onclick=()=>{ saveProtocol().catch(e=>{updateStatus('Fehler: '+e.message,'err');}); };
+  document.getElementById('printBtn').onclick=()=>window.print();
+
+  document.getElementById('sessionDateSelect').addEventListener('change', async ()=>{
+    await applySelectedSessionFromPicker();
+    await loadUpcomingSessionsForSeeding(getSelectedDate());
+  });
+
+  const manualToggle=document.getElementById('manualSessionToggle');
+  const manualWrap=document.getElementById('manualDateWrap');
+  manualToggle.addEventListener('change', async()=>{
+    manualWrap.style.display = manualToggle.checked ? 'block' : 'none';
+    if(manualToggle.checked){
+      document.getElementById('manualDateInput').value = ymd(todayLocal());
+    }
+    await applySelectedSessionFromPicker();
+    await loadUpcomingSessionsForSeeding(getSelectedDate());
+  });
+  document.getElementById('manualDateInput').addEventListener('change', async()=>{
+    await applySelectedSessionFromPicker();
+    await loadUpcomingSessionsForSeeding(getSelectedDate());
+  });
+
+  document.getElementById('reloadSessionsBtn').onclick=()=>loadAllSessionsForSchool();
+  document.getElementById('reloadNextSessionsBtn').onclick=()=>loadUpcomingSessionsForSeeding(getSelectedDate());
+
+  await loadAllSessionsForSchool();
+}
+</script>
+
+<button class="home-btn" onclick="location.href='hauptseite.html'">
+  <img src="home.jpg" alt="Home">
+</button>
+</body>
+</html>
