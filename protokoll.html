@@ -36,16 +36,24 @@
     .inline-check{display:inline-flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1}
     .inline-check input[type="checkbox"]{width:auto;height:auto;margin:0;transform:none}
 
-    /* Zentrierung für den Speichern-Bereich */
+    /* Zentrierter Speichern-Bereich */
     .center-actions{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
 
-    /* Druck-Styles */
+    /* ================== DRUCK-ANSICHT ================== */
     @media print {
       body { background:#fff; color:#000; }
       header, .home-btn, .btn, .status, #toggleAnonNames { display:none !important; }
-      .card { background:#fff; border:1px solid #ddd; }
-      input, textarea, select { background:#fff; color:#000; border:1px solid #ccc; }
-      .pill { border-color:#ddd; color:#000; background:#fff; }
+
+      /* Graue Rahmen entfernen */
+      .card, .topic-card { background:#fff !important; border:none !important; box-shadow:none !important; }
+      input, textarea, select { background:#fff !important; color:#000 !important; border:none !important; }
+      .pill { border:none !important; background:#fff !important; color:#000 !important; }
+
+      /* Eingabeblöcke ausblenden (wie gewünscht) */
+      #topicAddRow,            /* "Neues Thema hinzufügen" (Label+Input+Button) */
+      #todoAddRow {            /* To-Do Aufgabe + Verantwortlich + Hinzufügen */
+        display:none !important;
+      }
     }
   </style>
 </head>
@@ -73,7 +81,7 @@
       </div>
     </div>
 
-    <!-- Manuelle Wahl direkt unter Trainingstermin (enge Checkbox) -->
+    <!-- Manuelle Wahl direkt unter Trainingstermin -->
     <div class="row" style="align-items:center; margin-top:10px">
       <label class="inline-check">
         <input type="checkbox" id="manualSessionToggle" />
@@ -105,7 +113,8 @@
 
   <!-- Themen + Notizen (mit Verantwortlichem) -->
   <div class="card">
-    <div class="row" style="align-items:flex-end">
+    <!-- Dieser Eingabeblock wird im Druck versteckt -->
+    <div id="topicAddRow" class="row" style="align-items:flex-end">
       <div style="flex:2">
         <label>Neues Thema hinzufügen</label>
         <input id="topicInput" placeholder="z.B. Lat Sao – Timing / Drills" />
@@ -114,6 +123,7 @@
         <button class="btn" id="addTopicBtn">➕ Thema anlegen</button>
       </div>
     </div>
+
     <div id="topicsWrap" style="display:grid;gap:12px;margin-top:12px"></div>
   </div>
 
@@ -126,7 +136,9 @@
         <span>To-Dos als Themen fürs nächste Protokoll</span>
       </label>
     </div>
-    <div class="row">
+
+    <!-- Dieser Eingabeblock wird im Druck versteckt -->
+    <div id="todoAddRow" class="row">
       <input id="todoInput" placeholder="To-Do (Aufgabe)" />
       <input id="todoOwnerInput" placeholder="Verantwortlich (Name)" />
       <button class="btn" id="addTodoBtn">➕ hinzufügen</button>
@@ -148,7 +160,7 @@
     <div id="todoList" class="list" style="margin-top:12px"></div>
   </div>
 
-  <!-- Speichern – zentriert, ohne Überschrift -->
+  <!-- Speichern – zentriert -->
   <div class="card">
     <div class="center-actions">
       <button class="btn" id="saveBtn">📤 Speichern</button>
