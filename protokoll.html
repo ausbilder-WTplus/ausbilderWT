@@ -50,8 +50,8 @@
       .pill { border:none !important; background:#fff !important; color:#000 !important; }
 
       /* Eingabeblöcke ausblenden (wie gewünscht) */
-      #topicAddRow,            /* "Neues Thema hinzufügen" (Label+Input+Button) */
-      #todoAddRow {            /* To-Do Aufgabe + Verantwortlich + Hinzufügen */
+      #topicAddRow,
+      #todoAddRow {
         display:none !important;
       }
     }
@@ -113,7 +113,6 @@
 
   <!-- Themen + Notizen (mit Verantwortlichem) -->
   <div class="card">
-    <!-- Dieser Eingabeblock wird im Druck versteckt -->
     <div id="topicAddRow" class="row" style="align-items:flex-end">
       <div style="flex:2">
         <label>Neues Thema hinzufügen</label>
@@ -137,7 +136,6 @@
       </label>
     </div>
 
-    <!-- Dieser Eingabeblock wird im Druck versteckt -->
     <div id="todoAddRow" class="row">
       <input id="todoInput" placeholder="To-Do (Aufgabe)" />
       <input id="todoOwnerInput" placeholder="Verantwortlich (Name)" />
@@ -166,11 +164,6 @@
       <button class="btn" id="saveBtn">📤 Speichern</button>
       <span class="status" id="status">Bereit.</span>
     </div>
-  </div>
-
-  <!-- Drucken (am Ende der Seite) -->
-  <div class="card">
-    <button class="btn" id="printBtn">🖨️ Drucken</button>
   </div>
 </div>
 
@@ -595,7 +588,6 @@ async function initPage(){
   document.getElementById('todoInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('todoOwnerInput').focus(); }});
   document.getElementById('todoOwnerInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addTodo(); }});
   document.getElementById('saveBtn').onclick=()=>{ saveProtocol().catch(e=>{updateStatus('Fehler: '+e.message,'err');}); };
-  document.getElementById('printBtn').onclick=()=>window.print();
 
   document.getElementById('sessionDateSelect').addEventListener('change', async ()=>{
     await applySelectedSessionFromPicker();
