@@ -48,13 +48,14 @@
       height:700px;
       border:none;
       border-radius:8px;
-      background:#000;
+      background:#000; /* so wie zuvor – sag Bescheid, wenn du hier lieber Weiß willst */
+      box-shadow:0 4px 16px rgba(0,0,0,.35);
     }
     @media (max-width:600px){
       iframe { height:500px; }
     }
 
-    /* ===== Home-Button (identisch wie auf Anzeige-Seite) ===== */
+    /* ===== Home-Button ===== */
     .home-btn {
       position:fixed;
       left:18px;
@@ -82,9 +83,9 @@
     <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
   </div>
 
-  <!-- Iframe mit Ausrüstung -->
+  <!-- Iframe mit Ausrüstung (URL kommt jetzt aus Firestore) -->
   <div class="iframe-wrap">
-    <iframe src="ausrustung.html" title="Schutzausrüstung"></iframe>
+    <iframe id="gearFrame" src="about:blank" title="Schutzausrüstung"></iframe>
   </div>
 
   <!-- Home-Button (weißer, runder Button unten links) -->
@@ -152,7 +153,63 @@
       // Bei "master" bleiben die Standardbilder bestehen.
     }
 
-    // ---- Auth & Header-Logik ----
+    // Flexible Doc-Suche (robust gegen verschiedene Schreibweisen der Doc-ID)
+    async function getDocFlexible(col, key){
+      const tries = [
+        key,
+        key?.toUpperCase?.(),
+        key?.charAt?.(0)?.toUpperCase?.() + key?.slice?.(1)?.toLowerCase?.(),
+        key?.toLowerCase?.()
+      ].filter(Boolean);
+      for (const id of tries){
+        try{
+          const snap = await db.collection(col).doc(id).get();
+          if (snap.exists) return { snap, id };
+        }catch(e){}
+      }
+      return null;
+    }
+
+    // Link laden: links/<schule>/trainingsausrüstung (mit Feld-Fallbacks)
+    async function loadGearIframeForSchool(schoolKey){
+      const frame = document.getElementById('gearFrame');
+      if (!frame) return;
+
+      // 1) erst die gewünschte Schule, 2) Fallback master
+      let doc = await getDocFlexible('links', schoolKey);
+      if (!doc) doc = await getDocFlexible('links', 'master');
+
+      let url = null;
+      if (doc){
+        const d = doc.snap.data() || {};
+        // Unicode-Feldnamen lieber in Bracket-Notation
+        url =
+          d['trainingsausrüstung'] ||  // mit Umlaut
+          d.trainingsausruestung  ||
+          d['ausrüstung']         ||
+          d.ausruestung           ||
+          d.schutzausruestung     ||
+          d['schutzausrüstung']   ||
+          d.gear                  ||
+          d.equipment             ||
+          d.gearUrl               ||
+          d.gearURL               ||
+          null;
+      }
+
+      if (url){
+        frame.src = url;
+      } else {
+        frame.src = 'about:blank';
+        alert(
+          'Kein Link für Trainingsausrüstung gefunden. Bitte in Firestore unter "links/' +
+          schoolKey.toLowerCase() +
+          '" ein Feld "trainingsausrüstung" (oder "trainingsausruestung") als String-URL anlegen.'
+        );
+      }
+    }
+
+    // ---- Auth & Init ----
     auth.onAuthStateChanged(async (user) => {
       if (!user) {
         location.href = "index.html";
@@ -162,8 +219,10 @@
       try {
         const school = await resolveSchool(user);
         applyLogosForSchool(school);
+        await loadGearIframeForSchool(school);
       } catch (e) {
-        console.error('[Header/School]', e);
+        console.error('[Links/Init]', e);
+        alert('Fehler beim Laden des Links zur Trainingsausrüstung.');
       }
     });
   </script>
