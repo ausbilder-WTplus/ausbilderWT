@@ -30,14 +30,13 @@
 
     .list{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
     .list .item{display:flex;align-items:center;gap:8px}
+
     .home-btn{position:fixed; left:18px; bottom:18px; border:none; background:#fff; color:#000; border-radius:50%; padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35); z-index:1000;}
     .home-btn img{ width:32px; height:32px; display:block; }
 
-    /* Dichte Checkbox-Labels (falls wir manuell doch wieder anzeigen müssten) */
-    .inline-check{display:inline-flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1}
+    .inline-check{display:inline-flex;align-items:center;gap:8px;margin:0;padding:0;line-height:1}
     .inline-check input[type="checkbox"]{width:auto;height:auto;margin:0;transform:none}
 
-    /* Print-Zusammenfassung (Termin & Thema) */
     .print-summary{display:none;margin-top:-4px;margin-bottom:8px}
     .print-summary h2{font-size:20px;margin-bottom:6px;color:#000}
     .print-summary .row{gap:10px}
@@ -53,8 +52,6 @@
       .card, .topic-card { background:#fff !important; border:none !important; box-shadow:none !important; }
       input, select { background:#fff !important; color:#000 !important; border:none !important; }
       .pill { border:none !important; background:#fff !important; color:#000 !important; }
-
-      /* Zusammenfassung nur im Druck anzeigen */
       .print-summary{ display:block !important; }
     }
   </style>
@@ -135,9 +132,16 @@
     <div id="noTodosHint" class="status" style="display:none">Keine To-Dos vorhanden.</div>
   </div>
 
-  <!-- Drucken (am Ende) -->
-  <div class="card">
-    <button class="btn" id="printBtn">🖨️ Drucken</button>
+  <!-- Drucken & Gelesen-Ack -->
+  <div class="card" id="footerActions">
+    <div class="row" style="align-items:center">
+      <label class="inline-check" style="flex:1">
+        <input type="checkbox" id="ackCheckbox" />
+        <span>Protokoll gelesen</span>
+      </label>
+      <button class="btn" id="printBtn">🖨️ Drucken</button>
+    </div>
+    <span id="ackInfo" class="status" aria-live="polite">—</span>
   </div>
 </div>
 
@@ -174,6 +178,12 @@ function ymd(d){const z=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-
 function todayLocal(){const d=new Date(); d.setHours(0,0,0,0); return d;}
 function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
 function endOfDay(d){const x=new Date(d);x.setHours(23,59,59,999);return x}
+function nextMonday001(base=new Date()){
+  const d=new Date(base); const day=(d.getDay()+6)%7; // Mo=0
+  const next=new Date(d); next.setDate(d.getDate() + (7 - day));
+  next.setHours(0,1,0,0);
+  return next;
+}
 function protocolDocRef(schoolLower, dateKey){
   return db.collection('protocols').doc(schoolLower).collection('dates').doc(dateKey);
 }
@@ -181,7 +191,7 @@ function protocolDocRef(schoolLower, dateKey){
 /* App State */
 const state={school:null, role:null, currentSessionId:null, topicDb:'—', att:[]};
 
-/* Auth */
+/* ======= Auth ======= */
 auth.onAuthStateChanged(async user=>{
   if(!user){location.replace('index.html');return;}
   document.getElementById('app').style.display='block';
@@ -197,7 +207,6 @@ auth.onAuthStateChanged(async user=>{
   const active=(sessionStorage.getItem('activeSchool')||school||'MASTER').trim().toUpperCase();
   state.role=role; state.school=active;
 
-  // Rolle ausblenden, nur Schule optional anzeigen (der Pill selbst bleibt versteckt)
   const schoolPill=document.getElementById('activeSchoolPill');
   schoolPill.textContent='Schule: '+state.school;
   schoolPill.style.display='inline-block';
@@ -207,7 +216,25 @@ auth.onAuthStateChanged(async user=>{
   initPage().catch(e=>console.error('[init]',e));
 });
 
-/* Sessions laden / Auswahl */
+/* ======= Default: letzter stattgefundener Trainingstag / letztes vorhandenes Protokoll ======= */
+async function findLatestProtocolDateKeyUpToToday(schoolUpper) {
+  const schoolLower = (schoolUpper || '').toLowerCase();
+  const todayKey = ymd(todayLocal());
+  try {
+    const ref = db.collection('protocols').doc(schoolLower).collection('dates');
+    const snap = await ref
+      .orderBy(firebase.firestore.FieldPath.documentId())
+      .endAt(todayKey)
+      .limitToLast(1)
+      .get();
+    if (!snap.empty) return snap.docs[0].id;
+  } catch(e) {
+    console.warn('[latestProtocol]', e);
+  }
+  return null;
+}
+
+/* ======= Sessions laden / Auswahl ======= */
 async function loadAllSessionsForSchool(){
   const sel=document.getElementById('sessionDateSelect');
   sel.innerHTML='<option value="">(Lade Termine…)</option>';
@@ -244,12 +271,22 @@ async function loadAllSessionsForSchool(){
       return;
     }
 
-    const now=todayLocal().getTime();
-    let defaultIdx=items.findIndex(x=>ymd(x.date)===ymd(new Date()));
-    if(defaultIdx===-1){
-      defaultIdx=items.findIndex(x=>x.date.getTime()>=now);
-      if(defaultIdx===-1) defaultIdx=items.length-1;
+    const nowMs = todayLocal().getTime();
+    let defaultIdx = -1;
+
+    const latestProtoKey = await findLatestProtocolDateKeyUpToToday(state.school);
+    if (latestProtoKey) {
+      defaultIdx = items.findIndex(x => x.key === latestProtoKey);
     }
+    if (defaultIdx === -1) {
+      // letzter vergangener Termin
+      defaultIdx = items.reduce((acc, it, idx) => (it.date.getTime() <= nowMs ? idx : acc), -1);
+    }
+    if (defaultIdx === -1) {
+      // sonst nächster kommender
+      defaultIdx = items.findIndex(x => x.date.getTime() >= nowMs);
+    }
+    if (defaultIdx === -1) defaultIdx = items.length - 1;
 
     items.forEach((it,idx)=>{
       const op=document.createElement('option');
@@ -270,7 +307,6 @@ async function loadAllSessionsForSchool(){
 }
 
 function getSelectedDate(){
-  // manuelle Auswahl ist auf dieser Seite ausgeblendet -> immer Dropdown
   const sel=document.getElementById('sessionDateSelect');
   const v=sel.value; if(!v){ return todayLocal(); }
   const [y,m,da]=v.split('-').map(n=>parseInt(n,10));
@@ -278,6 +314,83 @@ function getSelectedDate(){
 }
 function getSelectedDateKey(){ return ymd(getSelectedDate()); }
 
+/* ======= Gelesen-Häkchen – Datenpfade =======
+   Neu: protocols/{schoolLower}/read/{dateKey}/byEmail/{email}
+   Legacy (optional): users/{uid}/protocolAcks/{schoolLower}_{dateKey}
+*/
+function readAckDocRef_ByNewStructure(emailRaw, schoolUpper, dateKey){
+  const schoolLower=(schoolUpper||'').toLowerCase();
+  return db.collection('protocols')
+    .doc(schoolLower)
+    .collection('read')
+    .doc(dateKey)
+    .collection('byEmail')
+    .doc(emailRaw); // E-Mail exakt wie auth.email (case-sensitiv)
+}
+function ackDocRef_legacy(uid, schoolUpper, dateKey){
+  const key = `${(schoolUpper||'').toLowerCase()}_${dateKey}`;
+  return db.collection('users').doc(uid).collection('protocolAcks').doc(key);
+}
+
+/* ======= Gelesen-Häkchen – UI & Logik ======= */
+async function refreshAckUI(){
+  const user = auth.currentUser; if(!user) return;
+  const cb=document.getElementById('ackCheckbox');
+  const info=document.getElementById('ackInfo');
+  const email=(user.email||'').trim(); // wichtig: kein toLowerCase()
+  const ref=readAckDocRef_ByNewStructure(email, state.school, getSelectedDateKey());
+  try{
+    const snap=await ref.get();
+    let checked=false, expires=null;
+    if(snap.exists){
+      const d=snap.data()||{};
+      expires = d.expiresAt?.toDate?.() || null;
+      if(!expires || new Date() < expires) checked=!!d.read;
+    }
+    cb.checked=checked;
+    info.textContent = checked
+      ? (expires ? `Gelesen (gültig bis ${expires.toLocaleString()})` : 'Gelesen')
+      : 'Noch nicht bestätigt';
+    info.className = 'status ' + (checked ? 'ok' : 'err');
+  }catch(e){
+    console.error('[ack] read error', e);
+    cb.checked=false;
+    info.textContent = (e?.code === 'permission-denied')
+      ? 'Keine Berechtigung, bitte Firestore-Regeln prüfen.'
+      : 'Status unbekannt';
+    info.className='status';
+  }
+}
+
+async function saveAck(checked){
+  const user = auth.currentUser; if(!user) return;
+  const email=(user.email||'').trim();
+  const dateKey=getSelectedDateKey();
+  const schoolUpper=state.school;
+
+  const refNew = readAckDocRef_ByNewStructure(email, schoolUpper, dateKey);
+  const refLegacy = ackDocRef_legacy(user.uid, schoolUpper, dateKey); // optional
+
+  if(checked){
+    const expires=nextMonday001(new Date()); // nächste Woche Mo 00:01
+    const payload={
+      read:true,
+      school:schoolUpper,
+      dateKey,
+      email,
+      setAt:firebase.firestore.FieldValue.serverTimestamp?.() || new Date(),
+      expiresAt: firebase.firestore.Timestamp.fromDate(expires)
+    };
+    await refNew.set(payload, { merge:true });
+    await refLegacy.set(payload, { merge:true }).catch(()=>{}); // optional
+  }else{
+    await refNew.delete().catch(()=>{});
+    await refLegacy.delete().catch(()=>{}); // optional
+  }
+  await refreshAckUI();
+}
+
+/* ======= Auswahl / Rendering ======= */
 async function applySelectedSessionFromPicker(){
   document.getElementById('topicFromDb').value='Lade…';
   state.currentSessionId=null; state.topicDb='—';
@@ -285,11 +398,10 @@ async function applySelectedSessionFromPicker(){
   if(hit){ state.currentSessionId=hit.id; state.topicDb=hit.data.topic||'—'; }
   document.getElementById('topicFromDb').value=state.topicDb||'—';
 
-  // Print-Zusammenfassung setzen
   updatePrintSummary();
-
   startAttendanceListener();
   await loadProtocolView();
+  await refreshAckUI();
 }
 
 async function findSessionForDate(date, school){
@@ -363,7 +475,6 @@ async function loadProtocolView(){
     const topics = Array.isArray(d.topics)? d.topics : [];
     const todos  = Array.isArray(d.todos)?  d.todos  : [];
 
-    // Themen
     if(topics.length===0){
       document.getElementById('noTopicsHint').style.display='block';
     } else {
@@ -377,7 +488,6 @@ async function loadProtocolView(){
       });
     }
 
-    // ToDos
     if(todos.length===0){
       document.getElementById('noTodosHint').style.display='block';
     } else {
@@ -401,11 +511,9 @@ async function loadProtocolView(){
 /* Print summary helper */
 function updatePrintSummary(){
   const dateKey = getSelectedDateKey();
-  // dateKey ist YYYY-MM-DD – für Anzeige in Locale wandeln
   const [y,m,d]=dateKey.split('-').map(n=>parseInt(n,10));
   const dispDate=new Date(y, m-1, d).toLocaleString();
   const topic=(document.getElementById('topicFromDb').value||'—');
-
   document.getElementById('printDate').textContent = dispDate;
   document.getElementById('printTopic').textContent = topic && topic.trim() ? topic : '—';
 }
@@ -418,12 +526,13 @@ async function initPage(){
   });
   document.getElementById('reloadSessionsBtn').onclick=()=>loadAllSessionsForSchool();
 
+  // Checkbox-Handler (neue Struktur speichern)
+  document.getElementById('ackCheckbox').addEventListener('change', (e)=>{
+    saveAck(e.target.checked).catch(console.error);
+  });
+
   await loadAllSessionsForSchool();
 }
 </script>
-
-<button class="home-btn" onclick="location.href='hauptseite.html'">
-  <img src="home.jpg" alt="Home">
-</button>
 </body>
 </html>
