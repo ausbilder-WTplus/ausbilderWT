@@ -77,6 +77,7 @@
       background:#fff; color:#000; border-radius:50%;
       padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35);
       z-index:1000;
+      transition: box-shadow .3s ease;
     }
     .home-btn img{ width:32px; height:32px; display:block; }
 
@@ -180,11 +181,38 @@
     }
 
     /* =========================
+       Strikter Schulkontext & UI-Guards
+       ========================= */
+    function getActiveSchoolStrict() {
+      const s = (sessionStorage.getItem('activeSchool') || '').trim().toLowerCase();
+      return s || null;
+    }
+    function setUiBlocked(blocked, reasonText) {
+      const addBtn = document.getElementById('addBtn');
+      addBtn.disabled = !!blocked;
+      if (blocked) {
+        msg(reasonText || "Bitte zuerst auf der Hauptseite eine Schule auswählen.");
+        document.querySelector('.home-btn').style.boxShadow = "0 0 0 6px rgba(255,255,255,.25)";
+      } else {
+        msg("");
+        document.querySelector('.home-btn').style.boxShadow = "";
+      }
+    }
+    function assertSchoolSelectedOrThrow() {
+      const s = getActiveSchoolStrict();
+      if (!s) throw new Error("no-active-school");
+      return s;
+    }
+
+    /* =========================
        Schulkontext & Collection Helper (pro Schule!)
        snacks/{schoolKey}/items/{dateId}
        ========================= */
-    let CURRENT_SCHOOL = 'master';
-    const SNACKS = () => db.collection('snacks').doc(CURRENT_SCHOOL).collection('items');
+    let CURRENT_SCHOOL = null; // erst setzen, wenn aktiv gewählt
+    const SNACKS = () => {
+      if (!CURRENT_SCHOOL) throw new Error("no-active-school");
+      return db.collection('snacks').doc(CURRENT_SCHOOL).collection('items');
+    };
 
     /* =========================
        Termin hinzufügen (nur Fr/So)
@@ -199,6 +227,11 @@
     });
 
     $("#addBtn").addEventListener("click", async ()=>{
+      try { assertSchoolSelectedOrThrow(); } catch {
+        setUiBlocked(true, "Bitte zuerst auf der Hauptseite eine Schule auswählen.");
+        return;
+      }
+
       const val = $("#datePicker").value;
       if (!val) { msg("Bitte ein Datum auswählen."); return; }
 
@@ -214,7 +247,7 @@
       }
 
       const id = toDateId(d);
-      const ref = SNACKS().doc(id); // <-- pro Schule
+      const ref = SNACKS().doc(id); // pro Schule
 
       msg("Leeren Termin anlegen …");
       try {
@@ -239,6 +272,9 @@
        Liste rendern (nur kommende Termine, pro Schule)
        ========================= */
     async function renderList(user){
+      // Wenn keine Schule gesetzt, nichts laden
+      if (!CURRENT_SCHOOL) return;
+
       const container = $("#list");
       container.innerHTML = "";
 
@@ -292,7 +328,12 @@
           btn.onclick = ()=> releaseSlot(doc.id);
           note.disabled = false;
           note.addEventListener("change", ()=>{
-            SNACKS().doc(doc.id).update({  // <-- pro Schule
+            try { assertSchoolSelectedOrThrow(); } catch {
+              setUiBlocked(true, "Bitte zuerst auf der Hauptseite eine Schule auswählen.");
+              note.value = data.note || "";
+              return;
+            }
+            SNACKS().doc(doc.id).update({
               note: note.value,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }).then(()=> msg("Notiz gespeichert.", true))
@@ -312,14 +353,18 @@
     }
 
     /* =========================
-       Claim / Release (pro Schule)
+       Claim / Release (pro Schule, mit Guard)
        ========================= */
     async function claimSlot(id, dateObj, noteValue){
+      try { assertSchoolSelectedOrThrow(); } catch {
+        setUiBlocked(true, "Bitte zuerst auf der Hauptseite eine Schule auswählen.");
+        return;
+      }
       msg("Trage dich ein …");
       const user = auth.currentUser;
       if (!user){ location.href = "index.html"; return; }
 
-      const ref = SNACKS().doc(id); // <-- pro Schule
+      const ref = SNACKS().doc(id);
       try {
         await db.runTransaction(async (tx)=>{
           const snap = await tx.get(ref);
@@ -340,11 +385,15 @@
     }
 
     async function releaseSlot(id){
+      try { assertSchoolSelectedOrThrow(); } catch {
+        setUiBlocked(true, "Bitte zuerst auf der Hauptseite eine Schule auswählen.");
+        return;
+      }
       msg("Gib Eintrag frei …");
       const user = auth.currentUser;
       if (!user){ location.href = "index.html"; return; }
 
-      const ref = SNACKS().doc(id); // <-- pro Schule
+      const ref = SNACKS().doc(id);
       try {
         await db.runTransaction(async (tx)=>{
           const snap = await tx.get(ref);
@@ -375,25 +424,21 @@
       if (!user) { location.href = "index.html"; return; }
       $("#userInfo").textContent = user.email || "";
 
-      // Aktive Schule: bevorzugt 'activeSchool' (von Hauptseite), sonst 'school', sonst Firestore
-      let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').trim().toLowerCase();
-      if (!school){
-        try{
-          const snap = await db.collection('rollen').doc(user.uid).get();
-          if (snap.exists){
-            school = (snap.data().school || '').toLowerCase();
-            sessionStorage.setItem('school', school);
-          }
-        }catch(e){
-          console.warn('[rollen] Fallback fehlgeschlagen', e);
-        }
+      // ausschließlich activeSchool akzeptieren (kein Fallback!)
+      const active = getActiveSchoolStrict();
+
+      if (!active) {
+        CURRENT_SCHOOL = null;
+        applyHeaderBySchool('master');
+        setUiBlocked(true, "Bitte zuerst auf der Hauptseite eine Schule auswählen.");
+        // Liste leer lassen
+        $("#list").innerHTML = "";
+        return;
       }
-      CURRENT_SCHOOL = normSchool(school || 'master');
 
-      // Header auf Schule setzen
+      CURRENT_SCHOOL = normSchool(active);
+      setUiBlocked(false, "");
       applyHeaderBySchool(CURRENT_SCHOOL);
-
-      // Liste rendern (im Schul-Kontext)
       renderList(user);
     });
   </script>
