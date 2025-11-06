@@ -32,12 +32,9 @@
 
   <script>
     function selectSchool(schoolKey){
-      // Exakte Schreibweise speichern (case-sensitiv für Firestore-Pfad!)
-      sessionStorage.setItem('activeSchool', String(schoolKey).trim());
-      // optional: alte Keys aufräumen
-      sessionStorage.removeItem('school');
-      // weiter zur Snackliste
-      location.href = "snackliste.html";
+      sessionStorage.setItem('activeSchool', String(schoolKey).trim()); // exakt wie Firestore
+      // optional: zusätzlich Deep-Link setzen, falls per Lesezeichen geöffnet wird
+      location.href = "snackliste.html?school=" + encodeURIComponent(schoolKey);
     }
   </script>
 </body>
