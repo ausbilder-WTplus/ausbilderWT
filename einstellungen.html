@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Einstellungen</title>
   <style>
-    :root { --bg:#000; --text:#fff; --card:#0e0e0e; --border:#2a2a2a; --muted:#aaa; --accent:#fff; --red:#f44; --green:#3c3; }
+    :root { --bg:#000; --text:#fff; --card:#0e0e0e; --border:#2a2a2a; --muted:#aaa; --accent:#fff; --red:#f44; --green:#3c; }
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--text);
       font-family: Arial, Helvetica, sans-serif; min-height:100vh; display:flex; flex-direction:column; }
@@ -254,7 +254,8 @@
       return { id: groupKey, schools: [] };
     }
     async function addSchoolToGroup(groupId, schoolName){
-      const clean = sclean(schoolName);
+      // LOWERCASE: Eingabe bereinigen + in Kleinbuchstaben speichern
+      const clean = sclean(schoolName).toLowerCase();
       if(!clean) throw new Error('Kein Schulname angegeben.');
       await db.collection('Schulen').doc(groupId)
         .set({ School: firebase.firestore.FieldValue.arrayUnion(clean) }, { merge:true });
@@ -395,7 +396,7 @@
         document.getElementById('linksList').innerHTML=''; document.getElementById('linksEmptyHint').style.display='block'; return;
       }
       sel.disabled=false;
-      const uniq=[...new Set(schools.map(s=>String(s).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
+      const uniq=[...new Set(schools.map(s=>s && String(s).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
       uniq.forEach(name=>{ const o=document.createElement('option'); o.value=name; o.textContent=name; sel.appendChild(o); });
       let pick = preferred && uniq.includes(preferred) ? preferred : (sessionStorage.getItem('linksSchool') || uniq[0]);
       const pickNorm = uniq.find(u=>u.toLowerCase()===(pick||'').toLowerCase()) || uniq[0];
