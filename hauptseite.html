@@ -90,7 +90,8 @@
       <button onclick="location.href='bilder.html'">🖼️ Bilder</button>
       <button onclick="location.href='videos.html'">🎥 Videos</button>
       <button onclick="location.href='trainingszeiten.html'">🕒 Trainingszeiten</button>
-      <button onclick="location.href='schuluebersicht.html'">🏫 Schulübersicht</button>
+      <!-- HIER angepasst: kein Inline-Handler, nur ID -->
+      <button id="schoolOverviewBtn">🏫 Schulübersicht</button>
       <button onclick="location.href='anleitungen.html'">📖 Anleitungen</button>
       <button onclick="location.href='checkliste.html'">✅ Checkliste</button>
       <!-- geändert: kein Inline-Handler mehr -->
@@ -433,6 +434,25 @@ auth.onAuthStateChanged(async user=>{
     // Alles gut: mit gewählter Schule weiter
     location.href = `snackliste.html?school=${encodeURIComponent(chosen.toLowerCase())}`;
   };
+
+  // 🏫 Schulübersicht abhängig von aktiver Schule öffnen
+  const schoolOverviewBtn = document.getElementById('schoolOverviewBtn');
+  if (schoolOverviewBtn) {
+    schoolOverviewBtn.onclick = () => {
+      const baseSchool = (sessionStorage.getItem('school') || school || '').trim();
+      let chosen = (sessionStorage.getItem('activeSchool') || active || baseSchool || 'master').trim();
+
+      // Falls noch MASTER aktiv, aber eine echte Schule hinterlegt ist → Basis-Schule nutzen
+      if (chosen.toUpperCase() === 'MASTER' && baseSchool) {
+        chosen = baseSchool;
+      }
+
+      const folder = chosen.toLowerCase();
+      // Ziel: "<schule>/schuluebersicht/schuluebersicht.html"
+      const target = `${folder}/schuluebersicht/schuluebersicht.html`;
+      location.href = target;
+    };
+  }
 
   try{
     const show=await shouldShowProtocolModal(user,active);
