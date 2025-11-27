@@ -55,7 +55,8 @@
     <!-- Weißer Card-Viewer mit eingebettetem Google-Drive-Ordner -->
     <div class="viewer-wrap">
       <iframe
-        src="https://drive.google.com/embeddedfolderview?id=15lcIFWPrLSinRGJoxlzYLln--8Ho7o3q#list"
+        id="anleitFrame"
+        src="about:blank"
         title="Anleitungen"
         allowfullscreen
       ></iframe>
@@ -89,6 +90,7 @@
       test.onerror = () => {}; // Fallback: ursprüngliches src bleibt
       test.src = url;
     }
+
     async function resolveSchool(user){
       let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').trim().toLowerCase();
       if (!school) {
@@ -102,6 +104,7 @@
       }
       return school || 'master';
     }
+
     function applyLogosForSchool(school){
       if (school === 'master') return; // Standardbilder behalten
       const base = `logos/${school}`;
@@ -110,14 +113,75 @@
       preloadAndSet(document.getElementById('logo-right'),  `${base}/logo-right.jpg`);
     }
 
-    // ---- Guard & Header anwenden ----
+    // ---- Flexible Doc-Suche in "links" ----
+    async function getDocFlexible(col, key){
+      const tries = [
+        key,
+        key?.toUpperCase?.(),
+        key?.charAt?.(0)?.toUpperCase?.() + key?.slice?.(1)?.toLowerCase?.(),
+        key?.toLowerCase?.()
+      ].filter(Boolean);
+
+      for (const id of tries){
+        try{
+          const snap = await db.collection(col).doc(id).get();
+          if (snap.exists) return snap;
+        }catch(e){
+          console.error('[getDocFlexible]', e);
+        }
+      }
+      return null;
+    }
+
+    // ---- Anleitungen-Link aus Firestore laden: links/<schule>/anleitungen ----
+    async function loadAnleitungenIframeForSchool(school){
+      const frame = document.getElementById('anleitFrame');
+      if (!frame) return;
+      frame.src = 'about:blank';
+
+      // 1) Versuche die konkrete Schule
+      let snap = await getDocFlexible('links', school);
+
+      // 2) Fallback: master
+      if (!snap) {
+        snap = await getDocFlexible('links', 'master');
+      }
+
+      if (!snap){
+        console.warn('Kein Dokument in "links" für Schule oder master gefunden.');
+        alert('Kein Anleitungen-Link in Firestore gefunden (links/<schule>/anleitungen).');
+        return;
+      }
+
+      const data = snap.data() || {};
+      // Erlaubte Feldnamen-Varianten
+      const url =
+        data.anleitungen ||
+        data.Anleitungen ||
+        data.anleitung ||
+        data.Anleitung ||
+        data.anleitungenUrl ||
+        data.anleitungenURL ||
+        null;
+
+      if (url){
+        frame.src = url;
+      } else {
+        console.warn('Kein Feld "anleitungen" im Dokument "links/'+snap.id+'".');
+        alert('In Firestore wurde kein Feld "anleitungen" gefunden.');
+      }
+    }
+
+    // ---- Guard & Header + Iframe anwenden ----
     auth.onAuthStateChanged(async (user) => {
       if (!user) { location.href = "index.html"; return; }
       try {
         const school = await resolveSchool(user);
         applyLogosForSchool(school);
+        await loadAnleitungenIframeForSchool(school);
       } catch (e) {
-        console.error('[Logos/School]', e);
+        console.error('[Anleitungen/Init]', e);
+        alert('Fehler beim Laden der Anleitungen-Quelle.');
       }
     });
   </script>
