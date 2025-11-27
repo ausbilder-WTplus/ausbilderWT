@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Checkliste</title>
+  <style>
+    :root { --bg:#000; --text:#fff; --card:#111; --muted:#bbb; --accent:#2ecc71; }
+    * { box-sizing: border-box; }
+    body{
+      margin:0; font-family: Arial, Helvetica, sans-serif;
+      background:var(--bg); color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      min-height:100vh; display:flex; flex-direction:column;
+    }
+
+    /* ===== Header (3 Logos, wie die anderen Seiten) ===== */
+    .header{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; gap:12px;
+    }
+    .header img{ height:80px; width:auto; object-fit:contain; }
+    @media (max-width:750px){ .header img{ height:44px; } }
+    @media (max-width:480px){ .header img{ height:40px; } }
+
+    /* Inhalt */
+    .wrap{
+      flex:1; display:flex; flex-direction:column; align-items:center;
+      padding:12px; gap:10px;
+    }
+    .card{
+      width:95%; max-width:780px; background:var(--card);
+      border-radius:12px; border:1px solid #222; padding:14px 16px;
+      box-shadow:0 4px 16px rgba(0,0,0,.35);
+    }
+    h2{ margin:8px 0 10px; font-size:20px; text-align:center; }
+    .section-title{ margin:12px 0 8px; text-align:center; font-weight:bold; font-size:18px; }
+
+    /* Liste & Zeilen */
+    .list{ list-style:none; padding:0; margin:0; }
+    .row{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 8px; border-radius:10px;
+    }
+    .row + .row{ border-top:1px solid #1d1d1d; }
+    .label{ flex:1; text-align:left; font-size:16px; color:#f3f3f3; }
+
+    /* Toggle (Switch) */
+    .switch{ position:relative; width:52px; height:28px; flex:0 0 auto; }
+    .switch input{ position:absolute; opacity:0; width:0; height:0; }
+    .slider{
+      position:absolute; inset:0; border-radius:14px;
+      background:#3a3a3a; transition:all .2s ease;
+      box-shadow: inset 0 0 0 2px #555;
+    }
+    .slider::before{
+      content:""; position:absolute; height:22px; width:22px;
+      left:3px; top:3px; border-radius:50%;
+      background:#bdbdbd; transition:transform .2s ease, background .2s ease;
+      box-shadow:0 1px 3px rgba(0,0,0,.5);
+    }
+    .switch input:checked + .slider{
+      background:rgba(46,204,113,.25); box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    .switch input:checked + .slider::before{ transform:translateX(24px); background:var(--accent); }
+
+    /* Home-Button (identisch) */
+    .home-btn{
+      position:fixed; left:18px; bottom:18px; border:none;
+      background:#fff; color:#000; border-radius:50%;
+      padding:10px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    .home-btn img{ width:32px; height:32px; display:block; }
+
+    /* Subtle caption */
+    .caption{ color:#cfcfcf; font-size:13px; text-align:center; opacity:.85; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header" id="header">
+    <img id="logo-left" src="../logoleft.jpg" alt="Logo links">
+    <img id="logo-center" src="../faust.jpg" alt="Logo Mitte">
+    <img id="logo-right" src="../logoright.jpg" alt="Logo rechts">
+  </div>
+
+  <!-- Inhalt -->
+  <div class="wrap">
+    <div class="card">
+      <h2>Checkliste</h2>
+
+      <div class="section-title">Täglich</div>
+      <ul class="list" id="dailyList"></ul>
+
+      <div class="section-title" style="margin-top:16px;">Wöchentlich</div>
+      <ul class="list" id="weeklyList"></ul>
+
+      <div class="caption">Tägliche Punkte werden jeden Tag zurückgesetzt, wöchentliche jeden Montag.</div>
+    </div>
+  </div>
+
+  <!-- Home -->
+  <button class="home-btn" onclick="location.href='../../hauptseite.html'">
+    <img src="../../home.jpg" alt="Home">
+  </button>
+
+  <!-- Firebase (Auth-Guard) -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
+  <!-- Zentrale Config -->
+  <script src="../../firebase-config.js"></script>
+
+  <script>
+    // ---- Firebase init (nur einmal) ----
+    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
+    // ---- Header-Logik: Logos je Schule (ohne MASTER-Text) ----
+    function preloadAndSet(imgEl, url){
+      const test = new Image();
+      test.onload = () => { imgEl.src = url; };
+      test.onerror = () => {}; // Fallback: ursprüngliches src bleibt
+      test.src = url;
+    }
+    async function resolveSchool(user){
+      // activeSchool hat Vorrang, dann school aus Session, sonst Firestore, dann 'master'
+      let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').trim().toLowerCase();
+      if (!school) {
+        try {
+          const snap = await db.collection('rollen').doc(user.uid).get();
+          if (snap.exists) {
+            school = (snap.data().school || '').toString().trim().toLowerCase();
+            if (school) sessionStorage.setItem('school', school);
+          }
+        } catch(e){ console.error('[resolveSchool]', e); }
+      }
+      return school || 'master';
+    }
+    function applyLogosForSchool(school){
+      if (school === 'master') return; // Standardbilder behalten
+      const base = `logos/${school}`;
+      preloadAndSet(document.getElementById('logo-center'), `${base}/logo-center.jpg`);
+      preloadAndSet(document.getElementById('logo-left'),   `${base}/logo-left.jpg`);
+      preloadAndSet(document.getElementById('logo-right'),  `${base}/logo-right.jpg`);
+    }
+
+    // ---- Auth-Guard + Header anwenden ----
+    auth.onAuthStateChanged(async (u) => {
+      if (!u) { location.href = "index.html"; return; }
+      try {
+        const school = await resolveSchool(u);
+        applyLogosForSchool(school);
+      } catch (e) {
+        console.error('[Header/School]', e);
+      }
+    });
+
+    // ---- Checklisten-Daten
+    const DAILY = [
+      { id: "staubsaugerwasser", label: "Staubsaugerwasser wechseln" },
+      { id: "schild",            label: "Schild raus- und wieder reinstellen" },
+      { id: "bonbonglas",        label: "Bonbonglas auffüllen" },
+      { id: "licht",             label: "Licht aus" },
+      { id: "tuer",              label: "Tür abschließen" },
+      { id: "heizung",           label: "Heizung ein- und wieder ausschalten" },
+    ];
+    const WEEKLY = [
+      { id: "blumen",       label: "Blumen gießen" },
+      { id: "staubwischen", label: "Staub wischen" },
+      { id: "bad",          label: "Bad reinigen" },
+    ];
+
+    // ---- Speicher-Keys (LocalStorage)
+    const LS_DAILY  = "checklist:daily";
+    const LS_WEEKLY = "checklist:weekly";
+
+    // Reset-Scopes
+    function todayKey() {
+      const d = new Date();
+      return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    }
+    function weekKey() {
+      const d = new Date();
+      const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dayNum = (date.getUTCDay() || 7);
+      date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+      const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+      return date.getUTCFullYear()+"-KW"+String(weekNo).padStart(2,"0");
+    }
+
+    function loadState(key, fallback) {
+      try { return JSON.parse(localStorage.getItem(key)) || fallback; }
+      catch { return fallback; }
+    }
+    function saveState(key, obj) { localStorage.setItem(key, JSON.stringify(obj)); }
+
+    // ---- Render-Funktion
+    function renderList(container, items, stateKey, scopeKey) {
+      const state = loadState(stateKey, { scope:"", values:{} });
+
+      // automatisches Zurücksetzen, wenn Scope (Tag/Woche) gewechselt
+      if (state.scope !== scopeKey) { state.scope = scopeKey; state.values = {}; saveState(stateKey, state); }
+
+      container.innerHTML = "";
+      for (const item of items) {
+        const isOn = !!state.values[item.id];
+
+        const li = document.createElement("li");
+        li.className = "row";
+
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = item.label;
+
+        const sw = document.createElement("label");
+        sw.className = "switch";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = isOn;
+        input.setAttribute("aria-label", item.label);
+        const slider = document.createElement("span");
+        slider.className = "slider";
+
+        input.addEventListener("change", () => {
+          state.values[item.id] = input.checked;
+          saveState(stateKey, state);
+        });
+
+        sw.appendChild(input);
+        sw.appendChild(slider);
+
+        li.appendChild(sw);
+        li.appendChild(label);
+        container.appendChild(li);
+      }
+    }
+
+    // ---- Start
+    const dailyList  = document.getElementById("dailyList");
+    const weeklyList = document.getElementById("weeklyList");
+    renderList(dailyList,  DAILY,  LS_DAILY,  todayKey());
+    renderList(weeklyList, WEEKLY, LS_WEEKLY, weekKey());
+  </script>
+</body>
+</html>
