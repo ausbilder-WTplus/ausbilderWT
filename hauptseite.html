@@ -90,11 +90,12 @@
       <button onclick="location.href='bilder.html'">🖼️ Bilder</button>
       <button onclick="location.href='videos.html'">🎥 Videos</button>
       <button onclick="location.href='trainingszeiten.html'">🕒 Trainingszeiten</button>
-      <!-- HIER angepasst: kein Inline-Handler, nur ID -->
+      <!-- Schulübersicht: ohne Inline-Handler, nur ID -->
       <button id="schoolOverviewBtn">🏫 Schulübersicht</button>
       <button onclick="location.href='anleitungen.html'">📖 Anleitungen</button>
-      <button onclick="location.href='checkliste.html'">✅ Checkliste</button>
-      <!-- geändert: kein Inline-Handler mehr -->
+      <!-- Checkliste: jetzt auch ohne Inline-Handler -->
+      <button id="checklistBtn">✅ Checkliste</button>
+      <!-- Snackliste ohne Inline-Handler -->
       <button id="snackListBtn">🍎 Snackliste</button>
     </div>
 
@@ -450,6 +451,24 @@ auth.onAuthStateChanged(async user=>{
       const folder = chosen.toLowerCase();
       // Ziel: "<schule>/schuluebersicht/schuluebersicht.html"
       const target = `${folder}/schuluebersicht/schuluebersicht.html`;
+      location.href = target;
+    };
+  }
+
+  // ✅ Checkliste abhängig von aktiver Schule öffnen
+  const checklistBtn = document.getElementById('checklistBtn');
+  if (checklistBtn) {
+    checklistBtn.onclick = () => {
+      const baseSchool = (sessionStorage.getItem('school') || school || '').trim();
+      let chosen = (sessionStorage.getItem('activeSchool') || active || baseSchool || 'master').trim();
+
+      if (chosen.toUpperCase() === 'MASTER' && baseSchool) {
+        chosen = baseSchool;
+      }
+
+      const folder = chosen.toLowerCase();
+      // Ziel: "<schule>/checkliste/checkliste.html"
+      const target = `${folder}/checkliste/checkliste.html`;
       location.href = target;
     };
   }
