@@ -1,135 +1,178 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Spiele</title>
   <style>
     :root { --bg:#000; --text:#fff; }
     * { box-sizing:border-box; }
     body{
-      margin:0;
-      font-family:Arial, Helvetica, sans-serif;
+      margin:0; font-family:Arial, Helvetica, sans-serif;
       background:var(--bg); color:var(--text);
-      min-height:100vh;
-      display:flex; flex-direction:column;
       -webkit-font-smoothing:antialiased;
+      min-height:100vh; display:flex; flex-direction:column;
     }
 
-    /* ===== Header (wie auf allen anderen Seiten) ===== */
+    /* ===== Header ===== */
     .header{
       display:flex; justify-content:space-between; align-items:center;
       padding:12px 16px; gap:12px;
     }
-    .header img{
-      height:80px; width:auto; object-fit:contain;
-    }
+    .header img{ height:80px; width:auto; object-fit:contain; }
     @media (max-width:750px){ .header img{ height:44px; } }
     @media (max-width:480px){ .header img{ height:40px; } }
 
-    /* ===== Inhalt (Viewer) ===== */
-    .viewer{
-      flex:1;
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      padding:20px;
-      width:100%;
+    /* ===== Weißer Viewer im Card-Stil ===== */
+    .wrap{
+      display:flex; flex-direction:column; align-items:center;
+      gap:14px; padding:12px; width:100%;
     }
-    iframe{
-      width:100%;
-      max-width:1000px;
-      height:80vh;
-      border:none;
-      border-radius:10px;
+    .viewer-wrap{
+      position:relative;
+      width:95%; max-width:980px;
       background:#fff;
+      border-radius:10px;
       box-shadow:0 4px 16px rgba(0,0,0,.35);
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.12);
+      min-height:60vh;
+    }
+    .viewer-wrap iframe{
+      width:100%; height:70vh; min-height:480px;
+      border:0;
+      display:block;
+      background:#fff;
+    }
+    .hint{
+      color:#aaa; font-size:13px; text-align:left;
+      max-width:980px; width:95%;
     }
 
     /* ===== Home-Button ===== */
     .home-btn{
-      position:fixed;
-      left:18px; bottom:18px;
-      border:none;
-      background:#fff;
-      border-radius:50%;
-      padding:10px;
-      cursor:pointer;
+      position:fixed; left:20px; bottom:20px;
+      background:#fff; border:none; border-radius:50%;
+      padding:10px; cursor:pointer;
       box-shadow:0 2px 6px rgba(0,0,0,.35);
     }
-    .home-btn img{
-      width:32px; height:32px; display:block;
-    }
+    .home-btn img{ width:32px; height:32px; display:block; }
   </style>
 </head>
 <body>
-  <!-- Header mit Logos -->
-  <div class="header" id="header">
+  <!-- Header -->
+  <div class="header">
     <img id="logo-left" src="pluslogo.png" alt="Logo links">
     <img id="logo-center" src="faust.jpg" alt="Logo Mitte">
     <img id="logo-right" src="melsungen.jpg" alt="Logo rechts">
   </div>
 
-  <!-- Google Drive Viewer -->
-  <div class="viewer">
-    <iframe src="https://drive.google.com/embeddedfolderview?id=1jwkos34rClZMloyCsnZX1RI1UQLa1_x1#grid" allowfullscreen></iframe>
+  <!-- Weißer Karten-Viewer -->
+  <div class="wrap">
+    <div class="viewer-wrap">
+      <iframe id="spieleFrame" src="about:blank" title="Spiele" allowfullscreen></iframe>
+    </div>
+    <div id="spieleHint" class="hint"></div>
   </div>
 
-  <!-- Home-Button -->
+  <!-- Home -->
   <button class="home-btn" onclick="location.href='hauptseite.html'">
     <img src="home.jpg" alt="Home">
   </button>
 
-  <!-- Firebase SDKs -->
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 
-  <!-- Zentrale Firebase-Config -->
   <script src="firebase-config.js"></script>
 
   <script>
-    // ---- Firebase init ----
     if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.firestore();
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-    // ---- Auth Guard + Header-Logik ----
-    auth.onAuthStateChanged(async (user) => {
-      if (!user) { location.href = "index.html"; return; }
+    /* ---------------- Hilfsfunktionen ---------------- */
 
-      try {
-        let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '').toLowerCase();
-        if (!school) {
-          const snap = await db.collection('rollen').doc(user.uid).get();
-          if (snap.exists) {
-            school = (snap.data().school || '').toLowerCase();
-            sessionStorage.setItem('school', school);
-          }
+    function preloadAndSet(imgEl, url){
+      const test = new Image();
+      test.onload = () => imgEl.src = url;
+      test.onerror = () => {};
+      test.src = url;
+    }
+
+    async function resolveSchool(user){
+      let school = (sessionStorage.getItem('activeSchool') || sessionStorage.getItem('school') || '')
+        .trim().toLowerCase();
+
+      if (!school){
+        const snap = await db.collection('rollen').doc(user.uid).get();
+        if (snap.exists){
+          school = (snap.data().school || '').toLowerCase();
+          sessionStorage.setItem('school', school);
         }
-
-        const logoLeft   = document.getElementById('logo-left');
-        const logoCenter = document.getElementById('logo-center');
-        const logoRight  = document.getElementById('logo-right');
-
-        function preloadAndSet(imgEl, url){
-          const test = new Image();
-          test.onload = ()=>{ imgEl.src = url; };
-          test.onerror = ()=>{};
-          test.src = url;
-        }
-
-        if (school && school !== 'master'){
-          const base = `logos/${school}`;
-          preloadAndSet(logoCenter, `${base}/logo-center.jpg`);
-          preloadAndSet(logoLeft,   `${base}/logo-left.jpg`);
-          preloadAndSet(logoRight,  `${base}/logo-right.jpg`);
-        }
-      } catch(e) {
-        console.error('[Header/School]', e);
       }
+      return school || 'master';
+    }
+
+    function applyLogosForSchool(school){
+      if (school === 'master') return;
+
+      const base = `logos/${school}`;
+      preloadAndSet(document.getElementById('logo-center'), `${base}/logo-center.jpg`);
+      preloadAndSet(document.getElementById('logo-left'),   `${base}/logo-left.jpg`);
+      preloadAndSet(document.getElementById('logo-right'),  `${base}/logo-right.jpg`);
+    }
+
+    /* -------- Flexible Doc-Suche -------- */
+    async function getDocFlexible(col, key){
+      const tries = [
+        key,
+        key?.toUpperCase?.(),
+        key?.charAt(0)?.toUpperCase() + key?.slice(1)?.toLowerCase(),
+        key?.toLowerCase?.()
+      ].filter(Boolean);
+
+      for (const id of tries){
+        const snap = await db.collection(col).doc(id).get();
+        if (snap.exists) return snap;
+      }
+      return null;
+    }
+
+    /* -------- Spiele-URL laden -------- */
+    async function loadSpieleIframeForSchool(school){
+      const frame = document.getElementById('spieleFrame');
+      const hint  = document.getElementById('spieleHint');
+      hint.textContent = '';
+
+      let snap = await getDocFlexible('links', school);
+      if (!snap) snap = await getDocFlexible('links', 'master');
+
+      let url = null;
+      if (snap){
+        const d = snap.data() || {};
+        url = d.spiele || d.Spiele || d.spieleUrl || d.spieleURL || d.driveSpiele || null;
+      }
+
+      if (url){
+        frame.src = url;
+      } else {
+        frame.src = 'about:blank';
+        hint.textContent = 'Kein Spiele-Link gefunden.';
+      }
+    }
+
+    /* -------- Start -------- */
+    auth.onAuthStateChanged(async (user) => {
+      if (!user){ location.href = "index.html"; return; }
+
+      const school = await resolveSchool(user);
+      applyLogosForSchool(school);
+      loadSpieleIframeForSchool(school);
     });
   </script>
 </body>
 </html>
+
