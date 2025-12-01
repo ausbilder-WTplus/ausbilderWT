@@ -158,6 +158,26 @@
         <h3>Anwesenheiten (Live)</h3>
         <div id="count" class="muted">0 Teilnehmende</div>
       </div>
+
+      <!-- NEU: Manuelle Eintragung -->
+      <div style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px;background:#0b0b0b">
+        <h4 style="margin:0 0 8px">Teilnehmer manuell eintragen</h4>
+        <div class="row">
+          <div>
+            <label for="manualName">Name</label>
+            <input type="text" id="manualName" placeholder="Vor- und Nachname">
+          </div>
+          <div>
+            <label for="manualEmail">E-Mail (optional)</label>
+            <input type="email" id="manualEmail" placeholder="E-Mail-Adresse">
+          </div>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button id="manualAddBtn" class="ghost" disabled>Teilnehmer hinzufügen</button>
+          <span id="manualStatus" class="status muted">–</span>
+        </div>
+      </div>
+
       <table aria-label="Anwesenheitsliste">
         <thead><tr><th>Name</th><th>E-Mail</th><th>Uhrzeit</th></tr></thead>
         <tbody id="list"></tbody>
@@ -243,7 +263,7 @@ async function ensureQRCodeLoaded(){
 })();
 </script>
 
-<!-- Hauptlogik (UNVERÄNDERT) -->
+<!-- Hauptlogik -->
 <script>
 (async function(){
   const {auth,db,newNonce,buildQrPayload,getUserRole} = window._att || {};
@@ -281,6 +301,12 @@ async function ensureQRCodeLoaded(){
   const qrPayloadEl=document.getElementById('qrPayload');
   const list=document.getElementById('list');
   const count=document.getElementById('count');
+
+  // NEU: Manuelle Eintragung
+  const manualName=document.getElementById('manualName');
+  const manualEmail=document.getElementById('manualEmail');
+  const manualAddBtn=document.getElementById('manualAddBtn');
+  const manualStatus=document.getElementById('manualStatus');
 
   // Rolle prüfen
   let role = await getUserRole();
@@ -373,11 +399,37 @@ async function ensureQRCodeLoaded(){
   filterRange.onchange=loadSessions;
 
   function clearSelectionStyles(){[...sessionsTbody.querySelectorAll('tr.sel')].forEach(tr=>tr.classList.remove('sel'));}
-  function setSelection(id,s){sidLabel.textContent=id||'–';
-    openBtn.disabled=!id||(s&&s.open);closeBtn.disabled=!id||!(s&&s.open);
-    showQrBtn.disabled=!id;deleteBtn.disabled=!id;attachLiveList(id||null);}
-  function selectRow(tr,id,s){clearSelectionStyles();if(tr)tr.classList.add('sel');setSelection(id,s);qrBox.textContent='(kein QR angezeigt)';qrPayloadEl.textContent='';}
-  function selectRowById(id){const tr=sessionsTbody.querySelector(`tr[data-id="${id}"]`);if(tr)tr.click();}
+
+  function setSelection(id,s){
+    sidLabel.textContent = id || '–';
+
+    openBtn.disabled  = !id || (s && s.open);
+    closeBtn.disabled = !id || !(s && s.open);
+    showQrBtn.disabled = !id;
+    deleteBtn.disabled = !id;
+
+    // NEU: Manuelle Eintragung nur erlauben, wenn ein Termin ausgewählt ist
+    manualAddBtn.disabled = !id;
+    if (!id){
+      manualStatus.textContent = '–';
+      manualStatus.className = 'status muted';
+    }
+
+    attachLiveList(id || null);
+  }
+
+  function selectRow(tr,id,s){
+    clearSelectionStyles();
+    if(tr)tr.classList.add('sel');
+    setSelection(id,s);
+    qrBox.textContent='(kein QR angezeigt)';
+    qrPayloadEl.textContent='';
+  }
+
+  function selectRowById(id){
+    const tr=sessionsTbody.querySelector(`tr[data-id="${id}"]`);
+    if(tr)tr.click();
+  }
 
   // Aktionen
   openBtn.onclick=async()=>{
@@ -428,6 +480,53 @@ async function ensureQRCodeLoaded(){
       qrBox.textContent='(kein aktiver Check-in)';qrPayloadEl.textContent='';
       await loadSessions();
     }catch(e){alert('Fehler: '+(e.message||e));setStatus('Fehler','err');}
+  };
+
+  // NEU: Teilnehmer manuell eintragen
+  manualAddBtn.onclick = async () => {
+    const sid = sidLabel.textContent;
+    if (sid === '–') return;
+
+    const name = (manualName.value || '').trim();
+    const email = (manualEmail.value || '').trim();
+
+    if (!name && !email){
+      alert('Bitte mindestens einen Namen oder eine E-Mail angeben.');
+      return;
+    }
+
+    manualAddBtn.disabled = true;
+    manualStatus.textContent = 'Wird hinzugefügt…';
+    manualStatus.className = 'status warn';
+
+    try{
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+
+      await db.collection('sessions')
+        .doc(sid)
+        .collection('checkins')
+        .add({
+          displayName: name,
+          email: email,
+          checkedAt: now,
+          source: 'manual'
+        });
+
+      manualStatus.textContent = 'Teilnehmer eingetragen';
+      manualStatus.className = 'status ok';
+
+      // Felder leeren
+      manualName.value = '';
+      manualEmail.value = '';
+    }catch(e){
+      console.error('[manual checkin] error', e);
+      alert('Fehler beim Eintragen: ' + (e.message || e));
+      manualStatus.textContent = 'Fehler';
+      manualStatus.className = 'status err';
+    }finally{
+      const hasSelection = sidLabel.textContent !== '–';
+      manualAddBtn.disabled = !hasSelection;
+    }
   };
 
   // Initial
