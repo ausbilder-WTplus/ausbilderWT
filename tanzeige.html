@@ -71,7 +71,27 @@
       }
 
       statusEl.textContent = "";
+
       const trainings = snap.docs.map(d => d.data());
+
+      // Sortierung:
+      // 1. nach "order", falls vorhanden
+      // 2. falls kein/gleicher order: nach Wochentag
+      // 3. dann nach Startzeit
+      trainings.sort((a,b) => {
+        const ao = (typeof a.order === "number") ? a.order : Number.MAX_SAFE_INTEGER;
+        const bo = (typeof b.order === "number") ? b.order : Number.MAX_SAFE_INTEGER;
+        if (ao !== bo) return ao - bo;
+
+        const ai = DAYS.indexOf(a.day);
+        const bi = DAYS.indexOf(b.day);
+        if (ai !== bi) return ai - bi;
+
+        const as = a.start || "";
+        const bs = b.start || "";
+        return as.localeCompare(bs);
+      });
+
       renderTrainings(trainings);
     } catch (e) {
       console.error(e);
@@ -82,32 +102,28 @@
   // ----------- Darstellung -----------
   function renderTrainings(trainings) {
     root.innerHTML = "";
-    // Sortiere nach Wochentagen
-    trainings.sort((a,b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day));
 
-    // Gruppiere nach Tag
-    const grouped = {};
+    let currentDay = null;
+    let dayDiv = null;
+
     for (const t of trainings) {
-      if (!grouped[t.day]) grouped[t.day] = [];
-      grouped[t.day].push(t);
-    }
+      // neuen Tages-Block beginnen, wenn Tag sich ändert
+      if (t.day !== currentDay) {
+        currentDay = t.day;
+        dayDiv = document.createElement("div");
+        dayDiv.className = "day";
+        dayDiv.innerHTML = `<h2>${currentDay}</h2>`;
+        root.appendChild(dayDiv);
+      }
 
-    for (const day of DAYS) {
-      if (!grouped[day]) continue;
-      const dayDiv = document.createElement("div");
-      dayDiv.className = "day";
-      dayDiv.innerHTML = `<h2>${day}</h2>`;
-      grouped[day].forEach(t => {
-        const slot = document.createElement("div");
-        slot.className = "slot";
-        slot.innerHTML = `
-          <div class="what">${t.what || ""}</div>
-          <div class="time">${t.start || ""}–${t.end || ""}</div>
-          <div class="trainers">Trainer: <b>${(t.trainers || []).join(", ") || "-"}</b></div>
-        `;
-        dayDiv.appendChild(slot);
-      });
-      root.appendChild(dayDiv);
+      const slot = document.createElement("div");
+      slot.className = "slot";
+      slot.innerHTML = `
+        <div class="what">${t.what || ""}</div>
+        <div class="time">${t.start || ""}–${t.end || ""}</div>
+        <div class="trainers">Trainer: <b>${(t.trainers || []).join(", ") || "-"}</b></div>
+      `;
+      dayDiv.appendChild(slot);
     }
   }
 

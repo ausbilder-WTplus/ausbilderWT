@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Trainingszeiten</title>
+  <title>Trainingszeiten (Admin)</title>
   <style>
     body {
       margin:0; background:#000; color:#fff; font-family:Arial,Helvetica,sans-serif;
@@ -96,14 +96,61 @@
 
   const COL = school => db.collection('trainingszeiten').doc(school).collection('trainingszeiten');
 
-  // ---------- Lade Trainings ----------
+  // ---------- Reihenfolge tauschen ----------
+  async function moveTraining(index, direction){
+    const newIndex = index + direction;
+    if(newIndex < 0 || newIndex >= STATE.trainings.length) return;
+
+    const a = STATE.trainings[index];
+    const b = STATE.trainings[newIndex];
+
+    // Fallback-Order, falls alte Einträge noch kein order-Feld haben
+    if (typeof a.order !== 'number') a.order = index + 1;
+    if (typeof b.order !== 'number') b.order = newIndex + 1;
+
+    // Werte tauschen
+    const tmpOrder = a.order;
+    a.order = b.order;
+    b.order = tmpOrder;
+
+    // Array lokal tauschen (für sofortige Anzeige)
+    STATE.trainings[index]   = b;
+    STATE.trainings[newIndex]= a;
+
+    // Neu sortieren nach order und neu rendern
+    STATE.trainings.sort((x,y)=> (x.order||0) - (y.order||0));
+    renderTrainings();
+
+    // In Firestore speichern
+    try{
+      const batch = db.batch();
+      batch.update(COL(STATE.school).doc(a.id), { order: a.order });
+      batch.update(COL(STATE.school).doc(b.id), { order: b.order });
+      await batch.commit();
+    }catch(e){
+      console.error(e);
+      alert('Reihenfolge konnte nicht gespeichert werden. Seite wird neu geladen.');
+      await loadTrainings(STATE.school);
+    }
+  }
+
+  // ---------- Lade Trainings (sortiert nach order) ----------
   async function loadTrainings(school){
-    const col=await COL(school).get();
-    STATE.trainings=col.docs.map(d=>({id:d.id,...d.data()}));
+    const col = await COL(school).get();
+    STATE.trainings = col.docs.map(d => ({id:d.id, ...d.data()}));
+
+    // Sortierung NUR hier: erst nach order, dann (falls order fehlt/gleich) nach Wochentag
+    STATE.trainings.sort((a,b)=>{
+      const ao = (typeof a.order === 'number') ? a.order : 0;
+      const bo = (typeof b.order === 'number') ? b.order : 0;
+      if (ao !== bo) return ao - bo;
+      return DAYS.indexOf(a.day) - DAYS.indexOf(b.day);
+    });
+
     renderTrainings();
   }
 
-  // ---------- Render ----------
+  // ---------- Render (mit Bearbeiten/Löschen + Hoch/Runter) ----------
   function renderTrainings(){
     const wrap=$('schedule');
     wrap.innerHTML="";
@@ -115,17 +162,166 @@
       wrap.innerHTML="<div class='hint'>Keine Trainingszeiten eingetragen.</div>";
       return;
     }
-    STATE.trainings.sort((a,b)=>DAYS.indexOf(a.day)-DAYS.indexOf(b.day));
-    for(const t of STATE.trainings){
+
+    STATE.trainings.forEach((t, index)=>{
       const card=document.createElement('div');
       card.className='card';
-      card.innerHTML=`
+
+      const info=document.createElement('div');
+      info.innerHTML=`
         <div><span class="day-label">${t.day}</span> – <b>${t.what||''}</b></div>
         <div>${t.start||''}–${t.end||''}</div>
         <div>Trainer: ${(t.trainers||[]).join(', ')||'-'}</div>
       `;
+      card.appendChild(info);
+
+      if(STATE.canEdit){
+        const btnRow=document.createElement('div');
+        btnRow.style.marginTop='8px';
+        btnRow.style.display='flex';
+        btnRow.style.gap='8px';
+        btnRow.style.flexWrap='wrap';
+
+        // Reihenfolge-Buttons
+        const upBtn=document.createElement('button');
+        upBtn.className='btn ghost';
+        upBtn.textContent='⬆️ Nach oben';
+        upBtn.disabled = (index === 0);
+        upBtn.onclick = () => moveTraining(index, -1);
+
+        const downBtn=document.createElement('button');
+        downBtn.className='btn ghost';
+        downBtn.textContent='⬇️ Nach unten';
+        downBtn.disabled = (index === STATE.trainings.length - 1);
+        downBtn.onclick = () => moveTraining(index, +1);
+
+        // Bearbeiten / Löschen
+        const editBtn=document.createElement('button');
+        editBtn.className='btn ghost';
+        editBtn.textContent='✏️ Bearbeiten';
+
+        const deleteBtn=document.createElement('button');
+        deleteBtn.className='btn ghost';
+        deleteBtn.textContent='🗑️ Löschen';
+
+        editBtn.onclick=()=>openEditForm(t,card);
+        deleteBtn.onclick=async()=>{
+          if(!confirm('Dieses Training wirklich löschen?')) return;
+          try{
+            await COL(STATE.school).doc(t.id).delete();
+            await loadTrainings(STATE.school);
+          }catch(e){
+            console.error(e);
+            alert('Fehler beim Löschen.');
+          }
+        };
+
+        btnRow.append(upBtn,downBtn,editBtn,deleteBtn);
+        card.appendChild(btnRow);
+      }
+
       wrap.appendChild(card);
+    });
+  }
+
+  // ---------- Formular zum Bearbeiten eines bestehenden Trainings ----------
+  function openEditForm(training, card){
+    card.innerHTML=''; // Karte leeren und Formular einbauen
+
+    // Wochentag
+    const daySel=document.createElement('select');
+    daySel.innerHTML='<option value="">Wochentag wählen</option>'+
+      DAYS.map(d=>`<option value="${d}">${d}</option>`).join('');
+    daySel.value=training.day||'';
+
+    // Beschreibung
+    const what=document.createElement('input');
+    what.type='text';
+    what.placeholder='z.B. Kids 4–10 Jahre';
+    what.value=training.what||'';
+
+    // Zeiten
+    const timeWrap=document.createElement('div');
+    const start=document.createElement('input');
+    start.type='time';
+    start.value=training.start||'';
+
+    const end=document.createElement('input');
+    end.type='time';
+    end.value=training.end||'';
+
+    timeWrap.append('Beginn:',start,' Ende:',end);
+
+    // Trainer
+    const trainersWrap=document.createElement('div');
+    trainersWrap.className='trainers';
+
+    const trainerInputs=[];
+
+    const addTrainerBtn=document.createElement('button');
+    addTrainerBtn.className='btn ghost';
+    addTrainerBtn.textContent='➕ Trainer hinzufügen';
+    addTrainerBtn.type='button';
+
+    function addTrainerInput(value=''){
+      const inp=document.createElement('input');
+      inp.type='text';
+      inp.placeholder='Trainername';
+      inp.value=value;
+      trainersWrap.insertBefore(inp,addTrainerBtn);
+      trainerInputs.push(inp);
     }
+
+    addTrainerBtn.onclick=()=>addTrainerInput();
+    trainersWrap.append(addTrainerBtn);
+
+    // vorhandene Trainer
+    (training.trainers||[]).forEach(name=>addTrainerInput(name));
+
+    // Buttons
+    const saveBtn=document.createElement('button');
+    saveBtn.className='btn';
+    saveBtn.textContent='💾 Speichern';
+    saveBtn.type='button';
+
+    const cancelBtn=document.createElement('button');
+    cancelBtn.className='btn ghost';
+    cancelBtn.textContent='Abbrechen';
+    cancelBtn.type='button';
+
+    cancelBtn.onclick=()=>renderTrainings();
+
+    saveBtn.onclick=async()=>{
+      const entry={
+        day: daySel.value,
+        what: what.value.trim(),
+        start: start.value,
+        end: end.value,
+        trainers: trainerInputs.map(i=>i.value.trim()).filter(Boolean)
+      };
+
+      if(!entry.day||!entry.what||!entry.start||!entry.end){
+        alert('Bitte alle Felder ausfüllen.');
+        return;
+      }
+
+      try{
+        await COL(STATE.school).doc(training.id).update(entry);
+        alert('Training aktualisiert!');
+        await loadTrainings(STATE.school);
+      }catch(e){
+        console.error(e);
+        alert('Fehler beim Speichern.');
+      }
+    };
+
+    card.append(
+      'Wochentag: ', daySel, document.createElement('br'),
+      what, document.createElement('br'),
+      timeWrap, trainersWrap,
+      document.createElement('br'),
+      saveBtn, ' ', cancelBtn
+    );
   }
 
   // ---------- Neues Training hinzufügen ----------
@@ -168,12 +364,19 @@
     end.onchange=()=>{ trainersWrap.style.display='block'; saveBtn.style.display='block'; };
 
     saveBtn.onclick=async()=>{
+      // Maximalen bisherigen Order-Wert bestimmen
+      const maxOrder = STATE.trainings.reduce((m,t)=>{
+        const o = (typeof t.order === 'number') ? t.order : 0;
+        return o > m ? o : m;
+      }, 0);
+
       const entry={
         day: daySel.value,
         what: what.value.trim(),
         start: start.value,
         end: end.value,
-        trainers: trainers.map(i=>i.value.trim()).filter(Boolean)
+        trainers: trainers.map(i=>i.value.trim()).filter(Boolean),
+        order: maxOrder + 1     // neuer Eintrag ans Ende
       };
       if(!entry.day||!entry.what||!entry.start||!entry.end){
         alert("Bitte alle Felder ausfüllen.");
