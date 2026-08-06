@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Probetrainings</title>
+<style>
+body{margin:0;background:#000;color:#fff;font-family:Arial,sans-serif}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px}
+.header img{height:80px}
+.wrap{padding:14px}
+.week{margin-bottom:20px;background:#181818;border:1px solid #444;border-radius:10px;overflow:hidden}
+.week-title{background:#252525;padding:10px 14px;font-weight:bold;font-size:20px}
+.days{display:grid;grid-template-columns:repeat(5,1fr)}
+.day{border-right:1px solid #333}.day:last-child{border-right:none}
+.dayhead{background:#222;padding:10px;text-align:center;border-bottom:1px solid #333}
+.slot{margin:8px;border:1px solid #555;border-radius:8px;overflow:hidden;cursor:pointer}
+.time{background:#333;padding:6px;text-align:center;font-weight:bold}
+.content{background:#111;padding:8px;min-height:72px}
+.free{text-align:center;color:#666;padding-top:18px}
+.home-btn{position:fixed;left:18px;bottom:18px;border:none;background:#fff;border-radius:50%;padding:10px}
+.home-btn img{width:32px;height:32px}
+</style>
+</head>
+<body>
+<div class="header">
+<img id="logo-left" src="pluslogo.png">
+<img id="logo-center" src="faust.jpg">
+<img id="logo-right" src="melsungen.jpg">
+</div>
+<div class="wrap"><div id="calendar"></div></div>
+<button class="home-btn" onclick="location.href='hauptseite.html'"><img src="home.jpg"></button>
+
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+if(!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+const db=firebase.firestore();
+const auth=firebase.auth();
+
+const labels=["Vergangene Woche","Aktuelle Woche","Nächste Woche","Übernächste Woche"];
+const dayNames=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
+const times=["17:00","18:00","19:30","20:30"];
+
+function monday(d){d=new Date(d);const wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);d.setHours(0,0,0,0);return d;}
+function kw(date){const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-y)/86400000)+1)/7);}
+
+async function editSlot(date,slot,school){
+ let ref=db.collection("probetrainings").where("school","==",school).where("date","==",date).where("slot","==",slot);
+ let snap=await ref.get();
+ let doc=snap.empty?null:snap.docs[0];
+
+ let name=prompt("Name",doc?doc.data().name:"");
+ if(name===null)return;
+ let age=prompt("Alter",doc?doc.data().age:"");
+ if(age===null)return;
+
+ if(doc){
+   await doc.ref.update({name,age});
+ }else{
+   await db.collection("probetrainings").add({
+      school,date,slot,name,age,
+      created:firebase.firestore.FieldValue.serverTimestamp()
+   });
+ }
+ location.reload();
+}
+
+async function load(school){
+ document.getElementById("calendar").innerHTML="";
+ const cm=monday(new Date());
+ const snap=await db.collection("probetrainings").where("school","==",school).get();
+ const map={};
+ snap.forEach(d=>{let x=d.data();map[x.date+"-"+x.slot]=x;});
+
+ for(let w=-1;w<=2;w++){
+  const ws=new Date(cm);ws.setDate(cm.getDate()+w*7);
+  let week=document.createElement("div");week.className="week";
+  week.innerHTML=`<div class="week-title">KW ${kw(ws)} – ${labels[w+1]}</div>`;
+  let grid=document.createElement("div");grid.className="days";
+  for(let d=0;d<5;d++){
+   let dt=new Date(ws);dt.setDate(ws.getDate()+d);
+   let ds=dt.toISOString().split("T")[0];
+   let day=document.createElement("div");day.className="day";
+   day.innerHTML=`<div class="dayhead">${dayNames[d]}<br>${dt.toLocaleDateString("de-DE")}</div>`;
+   times.forEach((t,i)=>{
+      let key=ds+"-"+i;
+      let s=document.createElement("div");
+      s.className="slot";
+      let c=map[key];
+      s.innerHTML=`<div class="time">${t}</div><div class="content">${c?'<b>'+c.name+'</b><br>'+c.age+' Jahre':'<div class="free">Frei</div>'}</div>`;
+      s.onclick=()=>editSlot(ds,i,school);
+      day.appendChild(s);
+   });
+   grid.appendChild(day);
+  }
+  week.appendChild(grid);
+  calendar.appendChild(week);
+ }
+}
+
+auth.onAuthStateChanged(async user=>{
+ if(!user){location.href="index.html";return;}
+ let school=(sessionStorage.getItem("activeSchool")||sessionStorage.getItem("school")||"master").toLowerCase();
+ await load(school);
+});
+</script>
+</body>
+</html>
