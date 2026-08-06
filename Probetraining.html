@@ -1,224 +1,132 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WT+ | Probetrainings</title>
-
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Probetrainings</title>
 <style>
-body{
-    margin:0;
-    background:#111;
-    color:#fff;
-    font-family:Arial,Helvetica,sans-serif;
-}
+:root{--bg:#000;--text:#fff;--card:#fff;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;min-height:100vh}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;gap:12px}
+.header img{height:80px;width:auto;object-fit:contain}
+@media(max-width:750px){.header img{height:44px}}
+@media(max-width:480px){.header img{height:40px}}
 
-header{
-    background:#1b1b1b;
-    padding:18px;
-    text-align:center;
-    border-bottom:2px solid #444;
-}
-
-h1{
-    margin:0;
-    font-size:28px;
-}
-
-#calendar{
-    padding:20px;
-}
-
-.week{
-    margin-bottom:30px;
-    background:#1c1c1c;
-    border:1px solid #444;
-    border-radius:10px;
-    overflow:hidden;
-}
-
-.week-title{
-    background:#2a2a2a;
-    padding:12px;
-    font-size:20px;
-    font-weight:bold;
-}
-
-.days{
-    display:grid;
-    grid-template-columns:repeat(5,1fr);
-}
-
-.day{
-    border-right:1px solid #333;
-    border-top:1px solid #333;
-    min-height:470px;
-}
-
-.day:last-child{
-    border-right:none;
-}
-
-.day-header{
-    background:#262626;
-    padding:10px;
-    text-align:center;
-    font-weight:bold;
-    border-bottom:1px solid #333;
-}
-
-.slot{
-    margin:10px;
-    border:1px solid #555;
-    border-radius:8px;
-    overflow:hidden;
-}
-
-.slot-time{
-    background:#303030;
-    padding:6px;
-    text-align:center;
-    font-weight:bold;
-}
-
-.slot-content{
-    background:#181818;
-    min-height:70px;
-    padding:8px;
-}
-
-.empty{
-    color:#777;
-    text-align:center;
-    margin-top:18px;
-}
-
-.person{
-    font-weight:bold;
-}
-
-.age{
-    color:#bdbdbd;
-    font-size:13px;
-    margin-top:4px;
-}
-
-.present{
-    margin-top:8px;
-    font-size:13px;
-}
-
-@media(max-width:1200px){
-.days{
-display:block;
-}
-.day{
-min-height:auto;
-}
-}
+.wrap{padding:14px}
+.week{margin-bottom:20px;background:#181818;border:1px solid #444;border-radius:10px;overflow:hidden}
+.week-title{background:#252525;padding:10px 14px;font-size:20px;font-weight:bold}
+.days{display:grid;grid-template-columns:repeat(5,1fr)}
+.day{border-right:1px solid #333}
+.day:last-child{border-right:none}
+.dayhead{background:#202020;padding:10px;text-align:center;font-weight:bold;border-bottom:1px solid #333}
+.slot{margin:8px;border:1px solid #555;border-radius:8px;overflow:hidden}
+.time{background:#333;padding:6px;text-align:center;font-weight:bold}
+.content{background:#111;padding:8px;min-height:72px}
+.free{text-align:center;color:#666;padding-top:18px}
+.present{margin-top:8px;font-size:13px}
+.home-btn{position:fixed;left:18px;bottom:18px;border:none;background:#fff;color:#000;border-radius:50%;padding:10px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.home-btn img{width:32px;height:32px;display:block}
+@media(max-width:1200px){.days{grid-template-columns:1fr}}
 </style>
 </head>
-
 <body>
 
-<header>
-<h1>Probetrainings</h1>
-<div>Vergangene Woche • Aktuelle Woche • +2 Wochen</div>
-</header>
+<div class="header">
+<img id="logo-left" src="pluslogo.png" alt="">
+<img id="logo-center" src="faust.jpg" alt="">
+<img id="logo-right" src="melsungen.jpg" alt="">
+</div>
 
+<div class="wrap">
 <div id="calendar"></div>
+</div>
+
+<button class="home-btn" onclick="location.href='hauptseite.html'">
+<img src="home.jpg" alt="Home">
+</button>
+
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
 
 <script>
+if(!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+const auth=firebase.auth();
+const db=firebase.firestore();
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-const trainingTimes=[
-"17:00",
-"18:00",
-"19:30",
-"20:30"
-];
+function preloadAndSet(imgEl,url){
+ const t=new Image();
+ t.onload=()=>imgEl.src=url;
+ t.onerror=()=>{};
+ t.src=url;
+}
 
-const weekLabels=[
-"Vergangene Woche",
-"Aktuelle Woche",
-"Nächste Woche",
-"Übernächste Woche"
-];
-
+const labels=["Vergangene Woche","Aktuelle Woche","Nächste Woche","Übernächste Woche"];
 const dayNames=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
+const times=["17:00","18:00","19:30","20:30"];
 
-function monday(date){
-    const d=new Date(date);
-    const day=(d.getDay()+6)%7;
-    d.setDate(d.getDate()-day);
-    d.setHours(0,0,0,0);
-    return d;
-}
-
+function monday(d){d=new Date(d);const wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);d.setHours(0,0,0,0);return d;}
 function kw(date){
-    const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
-    d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));
-    const yearStart=new Date(Date.UTC(d.getUTCFullYear(),0,1));
-    return Math.ceil((((d-yearStart)/86400000)+1)/7);
+ const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
+ d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));
+ const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1));
+ return Math.ceil((((d-ys)/86400000)+1)/7);
+}
+function buildCalendar(){
+ const root=document.getElementById("calendar");
+ root.innerHTML="";
+ const cm=monday(new Date());
+ for(let w=-1;w<=2;w++){
+   const ws=new Date(cm);ws.setDate(cm.getDate()+w*7);
+   const week=document.createElement("div");
+   week.className="week";
+   week.innerHTML=`<div class="week-title">KW ${kw(ws)} – ${labels[w+1]}</div>`;
+   const days=document.createElement("div");days.className="days";
+   for(let d=0;d<5;d++){
+     const dt=new Date(ws);dt.setDate(ws.getDate()+d);
+     const day=document.createElement("div");
+     day.className="day";
+     day.innerHTML=`<div class="dayhead">${dayNames[d]}<br>${dt.toLocaleDateString("de-DE")}</div>`;
+     times.forEach(t=>{
+       const slot=document.createElement("div");
+       slot.className="slot";
+       slot.innerHTML=`<div class="time">${t}</div>
+       <div class="content">
+       <div class="free">Frei</div>
+       ${w==-1?'<div class="present"><label><input type="checkbox"> Anwesend</label></div>':''}
+       </div>`;
+       day.appendChild(slot);
+     });
+     days.appendChild(day);
+   }
+   week.appendChild(days);
+   root.appendChild(week);
+ }
 }
 
-const calendar=document.getElementById("calendar");
-const currentMonday=monday(new Date());
-
-for(let w=-1;w<=2;w++){
-
-    const weekStart=new Date(currentMonday);
-    weekStart.setDate(currentMonday.getDate()+w*7);
-
-    const week=document.createElement("div");
-    week.className="week";
-
-    const title=document.createElement("div");
-    title.className="week-title";
-    title.textContent=`KW ${kw(weekStart)} - ${weekLabels[w+1]}`;
-    week.appendChild(title);
-
-    const days=document.createElement("div");
-    days.className="days";
-
-    for(let d=0;d<5;d++){
-
-        const date=new Date(weekStart);
-        date.setDate(weekStart.getDate()+d);
-
-        const day=document.createElement("div");
-        day.className="day";
-
-        const header=document.createElement("div");
-        header.className="day-header";
-        header.innerHTML=`${dayNames[d]}<br>${date.toLocaleDateString("de-DE")}`;
-        day.appendChild(header);
-
-        trainingTimes.forEach(time=>{
-
-            const slot=document.createElement("div");
-            slot.className="slot";
-
-            slot.innerHTML=`
-            <div class="slot-time">${time}</div>
-            <div class="slot-content">
-                <div class="empty">frei</div>
-            </div>
-            `;
-
-            day.appendChild(slot);
-
-        });
-
-        days.appendChild(day);
-
-    }
-
-    week.appendChild(days);
-    calendar.appendChild(week);
-
-}
-
+auth.onAuthStateChanged(async user=>{
+ if(!user){location.href="index.html";return;}
+ let active=(sessionStorage.getItem("activeSchool")||"").trim().toLowerCase();
+ let base=(sessionStorage.getItem("school")||"").trim().toLowerCase();
+ if(!active&&!base){
+   const snap=await db.collection("rollen").doc(user.uid).get();
+   if(snap.exists){
+     base=(snap.data().school||"").toLowerCase();
+     sessionStorage.setItem("school",base);
+   }
+ }
+ const school=active||base||"master";
+ if(school!=="master"){
+   const b=`logos/${school}`;
+   preloadAndSet(document.getElementById("logo-left"),`${b}/logo-left.jpg`);
+   preloadAndSet(document.getElementById("logo-center"),`${b}/logo-center.jpg`);
+   preloadAndSet(document.getElementById("logo-right"),`${b}/logo-right.jpg`);
+ }
+ buildCalendar();
+});
 </script>
-
 </body>
 </html>
