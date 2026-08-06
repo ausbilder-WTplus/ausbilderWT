@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
@@ -74,7 +74,7 @@ function buildCalendar(){
         slot.innerHTML=`<div class="time">${t}</div>
         <div class="content" id="slot-${ds}-${index}">
           <div class="free">Frei</div>
-          ${w==-1?'<div class="present"><label><input type="checkbox"> Anwesend</label></div>':''}
+         ${w<=0?'<div class="present"><label><input type="checkbox"> Anwesend</label></div>':''}
         </div>`;
         day.appendChild(slot);
       });
