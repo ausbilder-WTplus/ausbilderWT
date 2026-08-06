@@ -85,7 +85,17 @@ function buildCalendar(){
 }
 
 async function loadProbetrainings(school){
- const snap=await db.collection("probetrainings").where("school","==",school).get();
+
+ let query = db.collection("probetrainings");
+
+if (school === "melsungen" || school === "guxhagen") {
+    query = query.where("school", "in", ["melsungen", "guxhagen"]);
+} else {
+    query = query.where("school", "==", school);
+}
+
+const snap = await query.get();
+ 
  snap.forEach(doc=>{
    const data=doc.data();
    const el=document.getElementById(`slot-${data.date}-${data.slot}`);
