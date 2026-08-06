@@ -73,7 +73,6 @@ const TIMES = {
     ]
 };
 
-
 function monday(d){d=new Date(d);const wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);d.setHours(0,0,0,0);return d;}
 function kw(date){const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-y)/86400000)+1)/7);}
 
@@ -117,8 +116,7 @@ async function load(school){
    day.innerHTML=`<div class="dayhead">${dayNames[d]}<br>${dt.toLocaleDateString("de-DE")}</div>`;
    const dayTimes = TIMES[dayNames[d]];
 
-dayTimes.forEach((t,index)=>{
- 
+dayTimes.forEach((t,i)=>{
       let key=ds+"-"+i;
       let s=document.createElement("div");
       s.className="slot";
