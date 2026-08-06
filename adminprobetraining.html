@@ -42,7 +42,37 @@ const auth=firebase.auth();
 
 const labels=["Vergangene Woche","Aktuelle Woche","Nächste Woche","Übernächste Woche"];
 const dayNames=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
-const times=["17:00","18:00","19:30","20:30"];
+const TIMES = {
+    "Montag": [
+        " ",
+        "17:30 - 18:15",
+        "18:30 - 19:15",
+        "19:30 - 21:00"
+    ],
+
+    "Dienstag": [
+        "17:30 - 18:15",
+        "18:30 - 20:00"
+    ],
+
+    "Mittwoch": [
+        "16:30 - 17:15",
+        "17:30 - 18:15",
+        "18:30 - 19:15",
+        "19:30 - 21:00"
+    ],
+
+    "Donnerstag": [
+        "16:30 - 17:15",
+	"17:30 - 18:15",
+        "18:30 - 20:00"
+    ],
+
+    "Freitag": [
+        "17:30 - 18:15"
+    ]
+};
+
 
 function monday(d){d=new Date(d);const wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);d.setHours(0,0,0,0);return d;}
 function kw(date){const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-y)/86400000)+1)/7);}
@@ -85,7 +115,10 @@ async function load(school){
    let ds=dt.toISOString().split("T")[0];
    let day=document.createElement("div");day.className="day";
    day.innerHTML=`<div class="dayhead">${dayNames[d]}<br>${dt.toLocaleDateString("de-DE")}</div>`;
-   times.forEach((t,i)=>{
+   const dayTimes = TIMES[dayNames[d]];
+
+dayTimes.forEach((t,index)=>{
+ 
       let key=ds+"-"+i;
       let s=document.createElement("div");
       s.className="slot";
