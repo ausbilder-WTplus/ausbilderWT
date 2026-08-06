@@ -1,50 +1,39 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="de">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Probetrainings</title>
 <style>
-:root{--bg:#000;--text:#fff;--card:#fff;}
+:root{--bg:#000;--text:#fff}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;min-height:100vh}
-.header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;gap:12px}
-.header img{height:80px;width:auto;object-fit:contain}
-@media(max-width:750px){.header img{height:44px}}
-@media(max-width:480px){.header img{height:40px}}
-
+body{margin:0;background:#000;color:#fff;font-family:Arial,sans-serif}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px}
+.header img{height:80px}
 .wrap{padding:14px}
 .week{margin-bottom:20px;background:#181818;border:1px solid #444;border-radius:10px;overflow:hidden}
-.week-title{background:#252525;padding:10px 14px;font-size:20px;font-weight:bold}
+.week-title{background:#252525;padding:10px 14px;font-weight:bold;font-size:20px}
 .days{display:grid;grid-template-columns:repeat(5,1fr)}
-.day{border-right:1px solid #333}
-.day:last-child{border-right:none}
-.dayhead{background:#202020;padding:10px;text-align:center;font-weight:bold;border-bottom:1px solid #333}
+.day{border-right:1px solid #333}.day:last-child{border-right:none}
+.dayhead{background:#222;padding:10px;text-align:center;border-bottom:1px solid #333}
 .slot{margin:8px;border:1px solid #555;border-radius:8px;overflow:hidden}
 .time{background:#333;padding:6px;text-align:center;font-weight:bold}
 .content{background:#111;padding:8px;min-height:72px}
 .free{text-align:center;color:#666;padding-top:18px}
-.present{margin-top:8px;font-size:13px}
-.home-btn{position:fixed;left:18px;bottom:18px;border:none;background:#fff;color:#000;border-radius:50%;padding:10px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.35)}
-.home-btn img{width:32px;height:32px;display:block}
-@media(max-width:1200px){.days{grid-template-columns:1fr}}
+.home-btn{position:fixed;left:18px;bottom:18px;border:none;background:#fff;border-radius:50%;padding:10px;cursor:pointer}
+.home-btn img{width:32px;height:32px}
 </style>
 </head>
 <body>
-
 <div class="header">
-<img id="logo-left" src="pluslogo.png" alt="">
-<img id="logo-center" src="faust.jpg" alt="">
-<img id="logo-right" src="melsungen.jpg" alt="">
+<img id="logo-left" src="pluslogo.png">
+<img id="logo-center" src="faust.jpg">
+<img id="logo-right" src="melsungen.jpg">
 </div>
 
-<div class="wrap">
-<div id="calendar"></div>
-</div>
+<div class="wrap"><div id="calendar"></div></div>
 
-<button class="home-btn" onclick="location.href='hauptseite.html'">
-<img src="home.jpg" alt="Home">
-</button>
+<button class="home-btn" onclick="location.href='hauptseite.html'"><img src="home.jpg"></button>
 
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
@@ -57,54 +46,55 @@ const auth=firebase.auth();
 const db=firebase.firestore();
 auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
 
-function preloadAndSet(imgEl,url){
- const t=new Image();
- t.onload=()=>imgEl.src=url;
- t.onerror=()=>{};
- t.src=url;
-}
+function preloadAndSet(el,url){const i=new Image();i.onload=()=>el.src=url;i.src=url;}
 
 const labels=["Vergangene Woche","Aktuelle Woche","Nächste Woche","Übernächste Woche"];
 const dayNames=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
 const times=["17:00","18:00","19:30","20:30"];
 
 function monday(d){d=new Date(d);const wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);d.setHours(0,0,0,0);return d;}
-function kw(date){
- const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
- d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));
- const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1));
- return Math.ceil((((d-ys)/86400000)+1)/7);
-}
+function kw(date){const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-y)/86400000)+1)/7);}
+
 function buildCalendar(){
- const root=document.getElementById("calendar");
- root.innerHTML="";
+ const root=document.getElementById("calendar");root.innerHTML="";
  const cm=monday(new Date());
  for(let w=-1;w<=2;w++){
    const ws=new Date(cm);ws.setDate(cm.getDate()+w*7);
-   const week=document.createElement("div");
-   week.className="week";
+   const week=document.createElement("div");week.className="week";
    week.innerHTML=`<div class="week-title">KW ${kw(ws)} – ${labels[w+1]}</div>`;
-   const days=document.createElement("div");days.className="days";
+   const grid=document.createElement("div");grid.className="days";
    for(let d=0;d<5;d++){
-     const dt=new Date(ws);dt.setDate(ws.getDate()+d);
-     const day=document.createElement("div");
-     day.className="day";
-     day.innerHTML=`<div class="dayhead">${dayNames[d]}<br>${dt.toLocaleDateString("de-DE")}</div>`;
-     times.forEach(t=>{
-       const slot=document.createElement("div");
-       slot.className="slot";
-       slot.innerHTML=`<div class="time">${t}</div>
-       <div class="content">
-       <div class="free">Frei</div>
-       ${w==-1?'<div class="present"><label><input type="checkbox"> Anwesend</label></div>':''}
-       </div>`;
-       day.appendChild(slot);
-     });
-     days.appendChild(day);
+      const dt=new Date(ws);dt.setDate(ws.getDate()+d);
+      const ds=dt.toISOString().split("T")[0];
+      const day=document.createElement("div");day.className="day";
+      day.innerHTML=`<div class="dayhead">${dayNames[d]}<br>${dt.toLocaleDateString("de-DE")}</div>`;
+      times.forEach((t,index)=>{
+        const slot=document.createElement("div");
+        slot.className="slot";
+        slot.innerHTML=`<div class="time">${t}</div>
+        <div class="content" id="slot-${ds}-${index}">
+          <div class="free">Frei</div>
+          ${w==-1?'<div class="present"><label><input type="checkbox"> Anwesend</label></div>':''}
+        </div>`;
+        day.appendChild(slot);
+      });
+      grid.appendChild(day);
    }
-   week.appendChild(days);
-   root.appendChild(week);
+   week.appendChild(grid);root.appendChild(week);
  }
+}
+
+async function loadProbetrainings(school){
+ const snap=await db.collection("probetrainings").where("school","==",school).get();
+ snap.forEach(doc=>{
+   const data=doc.data();
+   const el=document.getElementById(`slot-${data.date}-${data.slot}`);
+   if(!el) return;
+   const present=el.querySelector(".present");
+   el.innerHTML=`<div style="font-weight:bold">${data.name}</div>
+                 <div style="color:#bbb">${data.age} Jahre</div>`;
+   if(present) el.appendChild(present);
+ });
 }
 
 auth.onAuthStateChanged(async user=>{
@@ -112,11 +102,8 @@ auth.onAuthStateChanged(async user=>{
  let active=(sessionStorage.getItem("activeSchool")||"").trim().toLowerCase();
  let base=(sessionStorage.getItem("school")||"").trim().toLowerCase();
  if(!active&&!base){
-   const snap=await db.collection("rollen").doc(user.uid).get();
-   if(snap.exists){
-     base=(snap.data().school||"").toLowerCase();
-     sessionStorage.setItem("school",base);
-   }
+   const s=await db.collection("rollen").doc(user.uid).get();
+   if(s.exists){base=(s.data().school||"").toLowerCase();sessionStorage.setItem("school",base);}
  }
  const school=active||base||"master";
  if(school!=="master"){
@@ -125,7 +112,8 @@ auth.onAuthStateChanged(async user=>{
    preloadAndSet(document.getElementById("logo-center"),`${b}/logo-center.jpg`);
    preloadAndSet(document.getElementById("logo-right"),`${b}/logo-right.jpg`);
  }
- buildCalendar(); 
+ buildCalendar();
+ await loadProbetrainings(school);
 });
 </script>
 </body>
