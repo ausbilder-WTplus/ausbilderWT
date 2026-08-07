@@ -80,19 +80,18 @@ async function editSlot(date,slot,school){
  let ref=db.collection("probetrainings").where("school","==",school).where("date","==",date).where("slot","==",slot);
  let snap=await ref.get();
  let doc=snap.empty?null:snap.docs[0];
-
- let name=prompt("Name",doc?doc.data().name:"");
- if(name===null)return;
- let age=prompt("Alter",doc?doc.data().age:"");
- if(age===null)return;
-
+ let participants=[];
+ if(doc&&Array.isArray(doc.data().participants)) participants=doc.data().participants;
+ else if(doc&&doc.data().name) participants=[{name:doc.data().name,age:doc.data().age,present:false}];
+ let name=prompt("Name des neuen Teilnehmers");
+ if(name===null||name.trim()==="") return;
+ let age=prompt("Alter");
+ if(age===null) return;
+ participants.push({name:name.trim(),age:age.trim(),present:false});
  if(doc){
-   await doc.ref.update({name,age});
+   await doc.ref.set({school,date,slot,participants,created:doc.data().created||firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
  }else{
-   await db.collection("probetrainings").add({
-      school,date,slot,name,age,
-      created:firebase.firestore.FieldValue.serverTimestamp()
-   });
+   await db.collection("probetrainings").add({school,date,slot,participants,created:firebase.firestore.FieldValue.serverTimestamp()});
  }
  location.reload();
 }
@@ -121,7 +120,22 @@ dayTimes.forEach((t,i)=>{
       let s=document.createElement("div");
       s.className="slot";
       let c=map[key];
-      s.innerHTML=`<div class="time">${t}</div><div class="content">${c?'<b>'+c.name+'</b><br>'+c.age+' Jahre':'<div class="free">Frei</div>'}</div>`;
+      let html='<div class="free">Frei</div>';
+      if(c){
+        if(Array.isArray(c.participants)){
+          html=c.participants.map((p,idx)=>`
+<div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+<input type="checkbox" ${p.present?'checked':''} disabled>
+<span><b>${p.name}</b> (${p.age})</span>
+</div>`).join('');
+        }else if(c.name){
+          html=`<div style="display:flex;align-items:center;gap:8px">
+<input type="checkbox" disabled>
+<span><b>${c.name}</b> (${c.age})</span>
+</div>`;
+        }
+      }
+      s.innerHTML=`<div class="time">${t}</div><div class="content">${html}</div>`;
       s.onclick=()=>editSlot(ds,i,school);
       day.appendChild(s);
    });
