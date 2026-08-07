@@ -128,15 +128,41 @@ if (school === "melsungen" || school === "guxhagen") {
 const snap = await query.get();
 
  snap.forEach(doc=>{
-   const data=doc.data();
-   const el=document.getElementById(`slot-${data.date}-${data.slot}`);
-   if(!el) return;
-   const present=el.querySelector(".present");
-   el.innerHTML=`<div style="font-weight:bold">${data.name}</div>
-                 <div style="color:#bbb">${data.age} Jahre</div>`;
-   if(present) el.appendChild(present);
+    const data=doc.data();
+    const el=document.getElementById(`slot-${data.date}-${data.slot}`);
+    if(!el) return;
+    const present=el.querySelector(".present");
+
+    let html="";
+    if(Array.isArray(data.participants)){
+        html=data.participants.map((p,idx)=>`
+<div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+<input type="checkbox" ${p.present?'checked':''}
+ onchange="togglePresent('${doc.id}',${idx},this.checked)">
+<span><b>${p.name ?? ""}</b> ${p.age ? "(" + p.age + ")" : ""}</span>
+</div>`).join("");
+    }else if(data.name){
+        html=`<div style="font-weight:bold">${data.name}</div><div style="color:#bbb">${data.age ?? ""} Jahre</div>`;
+    }else{
+        html='<div class="free">Frei</div>';
+    }
+
+    el.innerHTML=html;
+    if(present) el.appendChild(present);
  });
 }
+
+
+async function togglePresent(docId,index,value){
+  const ref=db.collection("probetrainings").doc(docId);
+  const snap=await ref.get();
+  if(!snap.exists) return;
+  const data=snap.data();
+  if(!Array.isArray(data.participants)) return;
+  data.participants[index].present=value;
+  await ref.update({participants:data.participants});
+}
+
 
 auth.onAuthStateChanged(async user=>{
  if(!user){location.href="index.html";return;}
