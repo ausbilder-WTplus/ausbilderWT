@@ -77,23 +77,71 @@ function monday(d){d=new Date(d);const wd=(d.getDay()+6)%7;d.setDate(d.getDate()
 function kw(date){const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-y)/86400000)+1)/7);}
 
 async function editSlot(date,slot,school){
- let ref=db.collection("probetrainings").where("school","==",school).where("date","==",date).where("slot","==",slot);
- let snap=await ref.get();
- let doc=snap.empty?null:snap.docs[0];
- let participants=[];
- if(doc&&Array.isArray(doc.data().participants)) participants=doc.data().participants;
- else if(doc&&doc.data().name) participants=[{name:doc.data().name,age:doc.data().age,present:false}];
- let name=prompt("Name des neuen Teilnehmers");
- if(name===null||name.trim()==="") return;
- let age=prompt("Alter");
- if(age===null) return;
- participants.push({name:name.trim(),age:age.trim(),present:false});
- if(doc){
-   await doc.ref.set({school,date,slot,participants,created:doc.data().created||firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
- }else{
-   await db.collection("probetrainings").add({school,date,slot,participants,created:firebase.firestore.FieldValue.serverTimestamp()});
- }
- location.reload();
+  let ref=db.collection("probetrainings").where("school","==",school).where("date","==",date).where("slot","==",slot);
+  let snap=await ref.get();
+  let doc=snap.empty?null:snap.docs[0];
+
+  let participants=[];
+  if(doc && Array.isArray(doc.data().participants))
+    participants=[...doc.data().participants];
+  else if(doc && doc.data().name)
+    participants=[{name:doc.data().name,age:doc.data().age,present:false}];
+
+  if(doc){
+    let action=prompt(`Was möchtest du tun?
+
+1 = Teilnehmer hinzufügen
+2 = Teilnehmer löschen
+
+Abbrechen = nichts tun`);
+
+    if(action===null) return;
+
+    if(action==="2"){
+      if(participants.length===0) return;
+
+      let list=participants.map((p,i)=>`${i+1} = ${p.name} (${p.age})`).join("\n");
+      let sel=prompt("Welchen Teilnehmer löschen?\n\n"+list);
+
+      if(sel===null) return;
+
+      let idx=parseInt(sel)-1;
+      if(isNaN(idx)||idx<0||idx>=participants.length){
+        alert("Ungültige Auswahl.");
+        return;
+      }
+
+      if(!confirm(`Teilnehmer "${participants[idx].name}" wirklich löschen?`))
+        return;
+
+      participants.splice(idx,1);
+
+      if(participants.length===0){
+        await doc.ref.delete();
+      }else{
+        await doc.ref.update({participants});
+      }
+
+      location.reload();
+      return;
+    }
+  }
+
+  let name=prompt("Name des neuen Teilnehmers");
+  if(name===null||name.trim()==="") return;
+
+  let age=prompt("Alter");
+  if(age===null) return;
+
+  participants.push({name:name.trim(),age:age.trim(),present:false});
+
+  if(doc){
+    await doc.ref.set({school,date,slot,participants,created:doc.data().created||firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+  }else{
+    await db.collection("probetrainings").add({school,date,slot,participants,created:firebase.firestore.FieldValue.serverTimestamp()});
+  }
+
+  location.reload();
 }
 
 async function load(school){
