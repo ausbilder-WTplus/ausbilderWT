@@ -99,7 +99,25 @@ async function editSlot(date,slot,school){
 async function load(school){
  document.getElementById("calendar").innerHTML="";
  const cm=monday(new Date());
- const snap=await db.collection("probetrainings").where("school","==",school).get();
+let query = db.collection("probetrainings");
+
+if (school === "melsungen" ||
+    school === "guxhagen" ||
+    school === "degenhardt") {
+
+    query = query.where(
+        "school",
+        "in",
+        ["melsungen", "guxhagen", "degenhardt"]
+    );
+
+} else {
+
+    query = query.where("school", "==", school);
+
+}
+
+const snap = await query.get();
  const map={};
  snap.forEach(d=>{let x=d.data();map[x.date+"-"+x.slot]=x;});
 
