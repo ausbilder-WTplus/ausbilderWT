@@ -105,7 +105,7 @@ dayTimes.forEach((t,index)=>{
         slot.innerHTML=`<div class="time">${t}</div>
         <div class="content" id="slot-${ds}-${index}">
           <div class="free">Frei</div>
-         ${w<=0?'<div class="present"><label><input type="checkbox"> Anwesend</label></div>':''}
+         
         </div>`;
         day.appendChild(slot);
       });
@@ -119,8 +119,8 @@ async function loadProbetrainings(school){
 
  let query = db.collection("probetrainings");
 
-if (school === "melsungen" || school === "guxhagen") {
-    query = query.where("school", "in", ["melsungen", "guxhagen"]);
+if (school === "melsungen" || school === "guxhagen"|| school === "degenhardt") {
+    query = query.where("school", "in", ["melsungen", "guxhagen","degenhardt"]);
 } else {
     query = query.where("school", "==", school);
 }
@@ -131,7 +131,6 @@ const snap = await query.get();
     const data=doc.data();
     const el=document.getElementById(`slot-${data.date}-${data.slot}`);
     if(!el) return;
-    const present=el.querySelector(".present");
 
     let html="";
     if(Array.isArray(data.participants)){
@@ -148,7 +147,6 @@ const snap = await query.get();
     }
 
     el.innerHTML=html;
-    if(present) el.appendChild(present);
  });
 }
 
