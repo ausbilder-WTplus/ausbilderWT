@@ -1,0 +1,647 @@
+```html
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Fighter</title>
+
+  <style>
+    :root {
+      --bg: #000;
+      --text: #fff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      -webkit-font-smoothing: antialiased;
+
+      min-height: 100vh;
+
+      display: flex;
+      flex-direction: column;
+    }
+
+
+    /* =====================================================
+       HEADER
+       ===================================================== */
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      padding: 12px 16px;
+      gap: 12px;
+    }
+
+    .header img {
+      height: 80px;
+      width: auto;
+      object-fit: contain;
+    }
+
+
+    @media (max-width: 750px) {
+
+      .header img {
+        height: 44px;
+      }
+
+    }
+
+
+    @media (max-width: 480px) {
+
+      .header img {
+        height: 40px;
+      }
+
+    }
+
+
+    /* =====================================================
+       HAUPTINHALT
+       ===================================================== */
+
+    .wrap {
+      width: 100%;
+      max-width: 1100px;
+
+      margin: 24px auto;
+
+      padding: 0 12px;
+    }
+
+
+    h1 {
+      font-size: 22px;
+
+      margin: 0 0 12px;
+    }
+
+
+    /* =====================================================
+       GOOGLE DRIVE FRAME
+       ===================================================== */
+
+    .frame {
+      width: 100%;
+      height: 78vh;
+
+      border: 0;
+      border-radius: 10px;
+
+      background: #111;
+
+      box-shadow:
+        0 4px 16px
+        rgba(0, 0, 0, 0.35);
+    }
+
+
+    .note {
+      opacity: 0.85;
+
+      font-size: 14px;
+
+      margin-top: 8px;
+    }
+
+
+    .err {
+      color: #ff9c9c;
+    }
+
+
+    /* =====================================================
+       HOME BUTTON
+       ===================================================== */
+
+    .home-btn {
+      position: fixed;
+
+      left: 18px;
+      bottom: 18px;
+
+      border: none;
+
+      background: #fff;
+      color: #000;
+
+      border-radius: 50%;
+
+      padding: 10px;
+
+      cursor: pointer;
+
+      box-shadow:
+        0 2px 6px
+        rgba(0, 0, 0, 0.35);
+    }
+
+
+    .home-btn img {
+      width: 32px;
+      height: 32px;
+
+      display: block;
+    }
+
+  </style>
+</head>
+
+
+<body>
+
+
+  <!-- =====================================================
+       HEADER
+       ===================================================== -->
+
+  <div
+    class="header"
+    id="header"
+  >
+
+    <img
+      id="logo-left"
+      src="pluslogo.png"
+      alt="Logo links"
+    >
+
+    <img
+      id="logo-center"
+      src="faust.jpg"
+      alt="Logo Mitte"
+    >
+
+    <img
+      id="logo-right"
+      src="melsungen.jpg"
+      alt="Logo rechts"
+    >
+
+  </div>
+
+
+
+  <!-- =====================================================
+       INHALT
+       ===================================================== -->
+
+  <div class="wrap">
+
+    <h1 id="title">
+      Fighter
+    </h1>
+
+
+    <iframe
+      id="fighterFrame"
+      class="frame"
+      title="Fighter Trainingsvideos"
+      allowfullscreen>
+    </iframe>
+
+
+    <div
+      id="msg"
+      class="note">
+    </div>
+
+  </div>
+
+
+
+  <!-- =====================================================
+       HOME BUTTON
+       ===================================================== -->
+
+  <button
+    class="home-btn"
+    onclick="location.href='hauptseite.html'"
+    title="Zur Hauptseite">
+
+    <img
+      src="home.jpg"
+      alt="Home"
+    >
+
+  </button>
+
+
+
+  <!-- =====================================================
+       FIREBASE
+       ===================================================== -->
+
+  <script
+    src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js">
+  </script>
+
+  <script
+    src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js">
+  </script>
+
+  <script
+    src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js">
+  </script>
+
+
+  <script src="firebase-config.js"></script>
+
+
+
+  <script>
+
+    /* =====================================================
+       FIREBASE INITIALISIEREN
+       ===================================================== */
+
+    if (!firebase.apps.length) {
+
+      firebase.initializeApp(
+        window.firebaseConfig
+      );
+
+    }
+
+
+    const auth =
+      firebase.auth();
+
+
+    const db =
+      firebase.firestore();
+
+
+    auth.setPersistence(
+      firebase.auth.Auth.Persistence.SESSION
+    );
+
+
+
+    /* =====================================================
+       ELEMENTE
+       ===================================================== */
+
+    const frame =
+      document.getElementById(
+        "fighterFrame"
+      );
+
+
+    const title =
+      document.getElementById(
+        "title"
+      );
+
+
+    const msgEl =
+      document.getElementById(
+        "msg"
+      );
+
+
+
+    /* =====================================================
+       FIGHTER GOOGLE DRIVE ORDNER
+
+       Dieser Ordner ist fest eingetragen.
+       KEIN Firestore-Link notwendig.
+       ===================================================== */
+
+    const FIGHTER_FOLDER_ID =
+      "1aHmXLQJEhl0khzxcJthSI8LYLuL6LFgi";
+
+
+    const FIGHTER_DRIVE_URL =
+      "https://drive.google.com/embeddedfolderview?id=" +
+      FIGHTER_FOLDER_ID +
+      "#grid";
+
+
+
+    /* =====================================================
+       LOGOS
+       ===================================================== */
+
+    function preloadAndSet(
+      imgEl,
+      url
+    ) {
+
+      const test =
+        new Image();
+
+
+      test.onload = () => {
+
+        imgEl.src =
+          url;
+
+      };
+
+
+      test.onerror = () => {
+
+        /*
+          Standardbild bleibt erhalten,
+          falls kein Schullogo vorhanden ist.
+        */
+
+      };
+
+
+      test.src =
+        url;
+
+    }
+
+
+
+    /* =====================================================
+       SCHULE ERMITTELN
+       ===================================================== */
+
+    async function resolveSchool(
+      user
+    ) {
+
+      let school = (
+
+        sessionStorage.getItem(
+          "activeSchool"
+        )
+
+        ||
+
+        sessionStorage.getItem(
+          "school"
+        )
+
+        ||
+
+        ""
+
+      )
+      .trim()
+      .toLowerCase();
+
+
+
+      /*
+        Falls im SessionStorage keine Schule
+        vorhanden ist, versuchen wir sie aus
+        Firestore zu laden.
+      */
+
+      if (!school) {
+
+        try {
+
+          const snap =
+            await db
+              .collection("rollen")
+              .doc(user.uid)
+              .get();
+
+
+          if (snap.exists) {
+
+            school = (
+              snap.data().school || ""
+            )
+            .toString()
+            .trim()
+            .toLowerCase();
+
+
+            if (school) {
+
+              sessionStorage.setItem(
+                "school",
+                school
+              );
+
+            }
+
+          }
+
+        }
+
+        catch (error) {
+
+          console.error(
+            "[resolveSchool]",
+            error
+          );
+
+        }
+
+      }
+
+
+      return school || "master";
+
+    }
+
+
+
+    /* =====================================================
+       SCHULLOGOS LADEN
+       ===================================================== */
+
+    function applyLogosForSchool(
+      school
+    ) {
+
+      if (
+        !school ||
+        school === "master"
+      ) {
+
+        return;
+
+      }
+
+
+      const base =
+        `logos/${school}`;
+
+
+      preloadAndSet(
+
+        document.getElementById(
+          "logo-center"
+        ),
+
+        `${base}/logo-center.jpg`
+
+      );
+
+
+      preloadAndSet(
+
+        document.getElementById(
+          "logo-left"
+        ),
+
+        `${base}/logo-left.jpg`
+
+      );
+
+
+      preloadAndSet(
+
+        document.getElementById(
+          "logo-right"
+        ),
+
+        `${base}/logo-right.jpg`
+
+      );
+
+    }
+
+
+
+    /* =====================================================
+       BENUTZERANMELDUNG PRÜFEN
+       ===================================================== */
+
+    auth.onAuthStateChanged(
+
+      async user => {
+
+
+        /*
+          Benutzer ist NICHT in der
+          Ausbilder-App angemeldet.
+        */
+
+        if (!user) {
+
+          location.replace(
+            "index.html"
+          );
+
+          return;
+
+        }
+
+
+
+        /*
+          Schule des Benutzers ermitteln.
+        */
+
+        const school =
+          await resolveSchool(
+            user
+          );
+
+
+
+        /*
+          Passende Logos anzeigen.
+        */
+
+        applyLogosForSchool(
+          school
+        );
+
+
+
+        /*
+          Aktive Schule bestimmen.
+        */
+
+        const active = (
+
+          sessionStorage.getItem(
+            "activeSchool"
+          )
+
+          ||
+
+          sessionStorage.getItem(
+            "school"
+          )
+
+          ||
+
+          school
+
+        )
+        .trim();
+
+
+
+        /*
+          Überschrift
+        */
+
+        if (
+          active.toUpperCase() ===
+          "MASTER"
+        ) {
+
+          title.textContent =
+            "Fighter";
+
+        }
+
+        else {
+
+          title.textContent =
+            `Fighter – ${active.toUpperCase()}`;
+
+        }
+
+
+
+        /*
+          Google Drive Fighter-Ordner laden.
+        */
+
+        frame.src =
+          FIGHTER_DRIVE_URL;
+
+
+
+        /*
+          Keine zusätzliche Meldung
+          unter dem Fenster anzeigen.
+        */
+
+        msgEl.textContent =
+          "";
+
+      }
+
+    );
+
+  </script>
+
+
+</body>
+
+</html>
+```
