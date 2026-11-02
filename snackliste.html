@@ -72,6 +72,9 @@
     .note-input { width:100%; border:1px solid #ddd; border-radius:8px; padding:8px; }
 
     .date{font-size:19px}
+    .date-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .delete-date{background:#fff2f2;color:#a40000;border:1px solid #dfaaaa;border-radius:9px;padding:8px 12px;cursor:pointer;font-weight:bold}
+    .delete-date:hover{background:#ffdede}
     .entry-row{display:grid;grid-template-columns:1fr 2fr auto;align-items:center;gap:12px;border-top:1px solid #ddd;padding:10px 0}
     .entry-row span{overflow-wrap:anywhere}
     .trash{background:#fff;border:1px solid #ddd;border-radius:8px;padding:8px;cursor:pointer;font-size:19px}
@@ -109,13 +112,11 @@
       <div class="info" id="userInfo"></div>
     </div>
 
-    <!-- Termin hinzufügen (nur Fr oder So) -->
+    <!-- Termin an beliebigem Datum hinzufügen -->
     <div class="add-box">
-      <label for="datePicker">Neuen Termin hinzufügen (nur Freitag oder Sonntag):</label>
+      <label for="datePicker">Neuen Termin hinzufügen:</label>
       <input type="date" id="datePicker" />
       <button class="btn" id="addBtn">Termin hinzufügen</button>
-      <button class="btn secondary" id="nextFriBtn">Nächster Freitag</button>
-      <button class="btn secondary" id="nextSunBtn">Nächster Sonntag</button>
     </div>
 
     <div id="msg" class="msg"></div>
@@ -182,13 +183,6 @@
     const toDateId = d => `${d.getFullYear()}-${z2(d.getMonth()+1)}-${z2(d.getDate())}`;
     const fmtDate = d => d.toLocaleDateString("de-DE",{weekday:"long", year:"numeric", month:"2-digit", day:"2-digit"});
     function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-    function nextWeekday(base, weekday){ // 0=So ... 6=Sa
-      const d = startOfDay(base);
-      const diff = (weekday - d.getDay() + 7) % 7;
-      d.setDate(d.getDate() + diff);
-      return d;
-    }
-
     /* =========================
        Schulkontext & Collection Helper (pro Schule!)
        snacks/{schoolKey}/items/{dateId}
@@ -196,18 +190,7 @@
     let CURRENT_SCHOOL = 'master';
     const SNACKS = () => db.collection('snacks').doc(CURRENT_SCHOOL).collection('items');
 
-    /* =========================
-       Termin hinzufügen (nur Fr/So)
-       ========================= */
-    $("#nextFriBtn").addEventListener("click", ()=>{
-      const d = nextWeekday(new Date(), 5);
-      $("#datePicker").value = `${d.getFullYear()}-${z2(d.getMonth()+1)}-${z2(d.getDate())}`;
-    });
-    $("#nextSunBtn").addEventListener("click", ()=>{
-      const d = nextWeekday(new Date(), 0);
-      $("#datePicker").value = `${d.getFullYear()}-${z2(d.getMonth()+1)}-${z2(d.getDate())}`;
-    });
-
+    /* Termin an beliebigem Wochentag hinzufügen */
     $("#addBtn").addEventListener("click", async ()=>{
       const val = $("#datePicker").value;
       if (!val) { msg("Bitte ein Datum auswählen."); return; }
@@ -217,11 +200,6 @@
 
       const today = startOfDay(new Date());
       if (d < today) { msg("Datum darf nicht in der Vergangenheit liegen."); return; }
-
-      const wd = d.getDay(); // 0=So, 5=Fr
-      if (!(wd === 0 || wd === 5)){
-        msg("Nur Freitag oder Sonntag sind erlaubt."); return;
-      }
 
       const id = toDateId(d);
       const ref = SNACKS().doc(id); // <-- pro Schule
@@ -299,19 +277,39 @@
         await renderList();msg('Eintrag gelöscht.',true);
       }catch(e){console.error(e);msg('Löschen fehlgeschlagen.');}
     }
+    async function deleteDate(dateId, formattedDate){
+      if (!auth.currentUser) { location.href='index.html'; return; }
+      // Löschen des Termins entfernt auch alle darin gespeicherten Snack-Einträge.
+      if (!confirm(`Den gesamten Termin ${formattedDate} inklusive aller Snack-Einträge wirklich löschen?\n\nDieser Vorgang kann nicht rückgängig gemacht werden.`)) return;
+      try {
+        await SNACKS().doc(dateId).delete();
+        await renderList();
+        msg('Termin und alle zugehörigen Einträge gelöscht.', true);
+      } catch(e) {
+        console.error(e);
+        msg('Termin konnte nicht gelöscht werden. Bitte Firebase-Berechtigungen prüfen.');
+      }
+    }
+
     async function renderList(){
       const container=$('#list');container.replaceChildren();
       try{
         const today=startOfDay(new Date());
         const snap=await SNACKS().where('date','>=',firebase.firestore.Timestamp.fromDate(today))
           .orderBy('date','asc').limit(30).get();
-        if(snap.empty){msg('Noch keine Termine angelegt. Lege oben einen Freitag oder Sonntag an.');return;}
+        if(snap.empty){msg('Noch keine Termine angelegt. Lege oben einen Termin an.');return;}
         msg('');
         snap.docs.forEach(doc=>{
           const data=doc.data();
           const date=data.date?.toDate ? data.date.toDate() : new Date(doc.id+'T12:00:00');
           const card=document.createElement('section');card.className='card';
-          const title=document.createElement('div');title.className='date';title.textContent=fmtDate(date);card.appendChild(title);
+          const header=document.createElement('div');header.className='date-header';
+          const title=document.createElement('div');title.className='date';title.textContent=fmtDate(date);
+          const deleteButton=document.createElement('button');deleteButton.type='button';
+          deleteButton.className='delete-date';deleteButton.textContent='🗑️ Termin löschen';
+          deleteButton.setAttribute('aria-label','Gesamten Termin '+fmtDate(date)+' löschen');
+          deleteButton.onclick=()=>deleteDate(doc.id,fmtDate(date));
+          header.append(title,deleteButton);card.appendChild(header);
           const entries=Array.isArray(data.entries)?data.entries:[];
           const all=[...(data.assigneeName?[{name:data.assigneeName,brought:data.note||'Keine Angabe',legacy:true}]:[]),...entries];
           if(!all.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Noch keine Snacks eingetragen.';card.appendChild(empty);}
