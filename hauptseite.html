@@ -107,8 +107,8 @@
       <button onclick="location.href='adminprobetraining.html'">📅 Probetraining Anlegen</button>
       <button onclick="location.href='urkunde.html'">📅 Urkunde Erstellen</button>
       <button onclick="location.href='registrierung.html'">🧾 Registrierung</button>
+      <button onclick="location.href='ausbilderverwaltung.html'">👥 Ausbilderverwaltung</button>
       <button onclick="location.href='protokoll.html'">🧾 Protokoll</button>
-      <button onclick="location.href='ausbilderverwaltung.html'">💾 Ausbilderverwaltung</button>
       <button onclick="location.href='session-admin.html'">🏋️‍♂️ Ausbildertraining erstellen</button>
       <button id="planBtn">🗓️ Trainingsplan verwalten</button>
       <button id="newsTickerBtn" style="display:none;">📰 Newsticker</button>
@@ -363,6 +363,22 @@ function showSchoolChooser(list, upper, baseSchool, active){
 auth.onAuthStateChanged(async user=>{
   if(!user){location.replace('index.html');return;}
   document.getElementById('app').style.display='block';
+
+  // Anzeigenamen aus Firebase Authentication in das eigene Firestore-Rollenprofil spiegeln.
+  // Bestehende Rollen- und Schulfelder bleiben durch merge unverändert.
+  // Bei fehlenden Schreibrechten läuft die Hauptseite trotzdem normal weiter.
+  const authAnzeigename = (user.displayName || '').trim();
+  if (authAnzeigename) {
+    try {
+      const rollenRef = db.collection('rollen').doc(user.uid);
+      const rollenSnap = await rollenRef.get();
+      if (rollenSnap.exists && (rollenSnap.data()?.anzeigename || '') !== authAnzeigename) {
+        await rollenRef.set({ anzeigename: authAnzeigename }, { merge: true });
+      }
+    } catch (error) {
+      console.warn('Anzeigename konnte nicht synchronisiert werden:', error);
+    }
+  }
 
   let role=(sessionStorage.getItem('role')||'').toLowerCase();
   let school=(sessionStorage.getItem('school')||'').trim();
