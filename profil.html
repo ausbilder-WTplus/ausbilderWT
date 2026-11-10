@@ -237,7 +237,16 @@
     // Auth-Infos
     setKV(uidEl, u.uid);
     setKV(emailEl, u.email);
+    // Firestore ist die maßgebliche Quelle für den in der App angezeigten Namen.
+    // Nur wenn dort noch kein Name vorhanden ist, auf Authentication zurückfallen.
     displayNameInput.value = u.displayName || '';
+    try {
+      const nameSnap = await db.collection('rollen').doc(u.uid).get();
+      const storedName = nameSnap.exists ? (nameSnap.data()?.anzeigename || '').trim() : '';
+      if (storedName) displayNameInput.value = storedName;
+    } catch (nameError) {
+      console.warn('Anzeigename aus Firestore nicht lesbar:', nameError);
+    }
     setKV(createdEl, u.metadata?.creationTime || '');
     setKV(lastLoginEl, u.metadata?.lastSignInTime || '');
 
